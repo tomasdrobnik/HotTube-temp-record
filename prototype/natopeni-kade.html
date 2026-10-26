@@ -1,0 +1,910 @@
+<title>Natopení kádě</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: summary strip (ETA, stav, rychlost, pravděpodobnost) → graf → data a ruční zápis → metodika */
+:root{
+  --bg:#f3f5f7; --panel:#ffffff; --fg:#17212b; --muted:#5b6876; --line:#d9dfe5;
+  --water:#2f6f9f; --heat:#c4600e; --band:rgba(196,96,14,.14); --pause:rgba(91,104,118,.12);
+  --ok:#2e7d4f; --warn:#b26a00; --bad:#b3261e;
+  --ok-bg:#e3f1e8; --warn-bg:#fbefd9; --bad-bg:#f8e1df;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11171d; --panel:#19212a; --fg:#e6ebf0; --muted:#97a4b2; --line:#2c3743;
+  --water:#6fb0e0; --heat:#f0954a; --band:rgba(240,149,74,.18); --pause:rgba(151,164,178,.14);
+  --ok:#6fcf94; --warn:#f2b34c; --bad:#f08a80;
+  --ok-bg:#183424; --warn-bg:#3a2c12; --bad-bg:#3d1c1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11171d; --panel:#19212a; --fg:#e6ebf0; --muted:#97a4b2; --line:#2c3743;
+  --water:#6fb0e0; --heat:#f0954a; --band:rgba(240,149,74,.18); --pause:rgba(151,164,178,.14);
+  --ok:#6fcf94; --warn:#f2b34c; --bad:#f08a80;
+  --ok-bg:#183424; --warn-bg:#3a2c12; --bad-bg:#3d1c1a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.45}
+.wrap{max-width:980px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+h1{font-size:1.45rem;font-weight:600;margin:0;text-wrap:balance}
+h2{font-size:.78rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0}
+.sub{color:var(--muted);margin:2px 0 0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.cell{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.big{font-family:var(--mono);font-size:2rem;font-weight:500;line-height:1.1;color:var(--heat)}
+.mid{font-family:var(--mono);font-size:1.35rem;font-weight:500;line-height:1.2}
+.small{font-size:.86rem;color:var(--muted)}
+.pill{align-self:flex-start;font-weight:600;font-size:.9rem;padding:3px 10px;border-radius:999px}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.note{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:flex;flex-direction:column;gap:4px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--fg);padding:6px 10px;font:inherit;font-size:.86rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--water);color:var(--panel)}
+.seg button+button{border-left:1px solid var(--line)}
+label{font-size:.86rem;color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+input{font:inherit;font-family:var(--mono);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+input[type=number]{width:5.5em}
+.btn{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;padding:7px 12px;cursor:pointer}
+.btn.primary{background:var(--heat);border-color:var(--heat);color:var(--panel);font-weight:600}
+.btn:focus-visible,.seg button:focus-visible,input:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+#chart{width:100%;min-height:260px}
+#chart svg{display:block;width:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.82rem;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:.9rem}
+.drop.over{border-color:var(--water);color:var(--water)}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
+th{font-weight:500;color:var(--muted);font-size:.8rem}
+td button{border:0;background:none;color:var(--bad);cursor:pointer;font:inherit}
+.flags{white-space:nowrap}
+td button.flag{color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:.8rem;margin-right:4px}
+td button.flag[aria-pressed="true"]{background:var(--water);border-color:var(--water);color:var(--panel)}
+.sec{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
+details.sec>summary,details.inner>summary{list-style:none;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+details.sec>summary{padding:12px 16px}
+details.inner>summary{font-size:.88rem;color:var(--water);font-weight:500;padding:2px 0}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;flex:none}
+details[open]>summary::before{transform:rotate(45deg)}
+summary:focus-visible{outline:2px solid var(--water);outline-offset:-2px;border-radius:10px}
+.sumline{font-size:.88rem;color:var(--muted);margin-left:auto}
+details.sec[open]>summary .sumline{display:none}
+details.inner{display:flex;flex-direction:column;gap:10px}
+details.inner[open]{display:flex}
+details.inner>*:not(summary){margin-top:10px}
+.secbody{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.stoke{border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tile{border-radius:10px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:4px;min-width:0;background:var(--bg);color:var(--fg);transition:background .2s}
+.tile .tl{font-size:.74rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.8}
+.tile .tv{font-size:2rem;font-weight:600;line-height:1.1;font-family:var(--mono);overflow-wrap:anywhere}
+.tile .ts{font-size:.85rem;opacity:.85}
+.tile.ok{background:var(--ok-bg);color:var(--ok)} .tile.warn{background:var(--warn-bg);color:var(--warn)} .tile.bad{background:var(--bad-bg);color:var(--bad)}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:8px 14px;margin:10px 0 0;font-size:.9rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0}
+@media (max-width:520px){.tile{padding:10px}.tile .tv{font-size:1.45rem}.tile .tl{font-size:.66rem}.kv{grid-template-columns:1fr}.kv dd{margin-bottom:6px}}
+.alert{border-radius:10px;padding:12px 14px;font-weight:600;display:flex;gap:10px;align-items:flex-start}
+.alert::before{content:"!";flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:.85rem;background:currentColor}
+.alert span{min-width:0}
+.alert.bad{background:var(--bad-bg);color:var(--bad);border:1.5px solid var(--bad)} .alert.warn{background:var(--warn-bg);color:var(--warn);border:1.5px solid var(--warn)}
+.alert.bad::before,.alert.warn::before{color:inherit}
+.alert b{font-weight:700}
+.fb{border-radius:8px;padding:10px 12px;font-size:.92rem;background:var(--bg);display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.fb .tag{font-weight:700;padding:2px 9px;border-radius:999px}
+.fb .tag.ok{background:var(--ok-bg);color:var(--ok)} .fb .tag.warn{background:var(--warn-bg);color:var(--warn)} .fb .tag.bad{background:var(--bad-bg);color:var(--bad)}
+.fb.flash{animation:fl 1.2s ease-out}
+@keyframes fl{from{box-shadow:0 0 0 3px var(--water)}to{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.fb.flash{animation:none}}
+.chip{font-size:.82rem;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--water);color:var(--panel)}
+.sync{font-size:.78rem;color:var(--muted);margin-left:6px;white-space:nowrap}
+.sync.ok{color:var(--ok)} .sync.err{color:var(--bad)}
+.stoke.due{border-color:var(--bad);box-shadow:0 0 0 2px var(--bad-bg)}
+.stoke.due #stokeNext{color:var(--bad)}
+.method{font-size:.88rem;color:var(--muted);max-width:70ch}
+.method p{margin:.3em 0}
+@media (max-width:760px){.strip{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}.big{font-size:1.7rem}}
+</style>
+
+<div class="wrap">
+  <header class="row" style="justify-content:space-between;align-items:flex-end">
+    <div><h1>Natopení kádě</h1> <span class="sync" id="sync">ukládá se jen v tomto prohlížeči</span>
+      <p class="sub">Odhad času dosažení cílové teploty z měřených hodnot čas / teplota.</p></div>
+    <div class="row">
+      <span class="chip" id="modeChip" hidden></span>
+      <button class="btn" id="endOpen" type="button">Ukončit natápění</button>
+      <button class="btn" id="resetOpen" type="button">Nový ohřev</button>
+    </div>
+  </header>
+
+  <section class="card" id="endPanel" hidden>
+    <h2>Ukončit natápění</h2>
+    <p class="small" style="margin:0">Od tohoto času se sleduje pokles teploty z dalších zápisů nebo importu. Platí, dokud nespustíš Nový ohřev.</p>
+    <form class="row" id="endForm">
+      <label for="enTime">konec v <input type="time" id="enTime" required></label>
+      <label for="enTa">teplota okolí °C <input type="number" id="enTa" step="0.5" placeholder="auto"></label>
+      <label for="enThr">hranice °C <input type="number" id="enThr" step="0.5" value="37" required></label>
+      <button class="btn primary" type="submit">Sledovat pokles</button>
+      <button class="btn" type="button" id="endCancel">Zrušit</button>
+    </form>
+  </section>
+
+  <section class="card" id="resetPanel" hidden>
+    <h2>Nový ohřev</h2>
+    <p class="small" style="margin:0">Smaže importovaná data, ruční zápisy, přikládání a ukončí sledování poklesu. Počáteční teplotu zadej, pokud nebudeš importovat data; jinak ji nech prázdnou a importuj CSV.</p>
+    <form class="row" id="resetForm">
+      <label for="rsTime">start <input type="time" id="rsTime" required></label>
+      <label for="rsTemp">počáteční °C <input type="number" id="rsTemp" step="0.1" placeholder="volitelné"></label>
+      <label for="rsStoke"><input type="checkbox" id="rsStoke" checked> přiloženo při startu</label>
+      <button class="btn primary" type="submit">Začít nový ohřev</button>
+      <button class="btn" type="button" id="resetCancel">Zrušit</button>
+    </form>
+  </section>
+
+  <section class="sec" id="secTrend">
+    <div class="secbody" style="padding-top:14px">
+      <div class="alert" id="alert" role="alert" hidden></div>
+      <div class="tiles" aria-live="polite">
+        <div class="tile" id="tEta"><span class="tl" id="tEtaL">Natopeno 40 °C</span><span class="tv num" id="tEtaV">–</span><span class="ts" id="tEtaS"></span></div>
+        <div class="tile" id="tTrend"><span class="tl" id="tTrendL">Trend</span><span class="tv" id="tTrendV">–</span><span class="ts" id="tTrendS"></span></div>
+        <div class="tile" id="tProb"><span class="tl" id="tProbL">Pravděpodobnost</span><span class="tv num" id="tProbV">–</span><span class="ts" id="tProbS"></span></div>
+      </div>
+      <details class="inner" id="secDetail">
+        <summary>Podrobnosti</summary>
+        <dl class="kv" id="heatKv">
+          <dt id="lblEta">Odhad 40 °C</dt><dd><b class="num" id="eta">–</b> <span id="etaSub"></span></dd>
+          <dt>Trend</dt><dd><span class="pill" id="trendPill">–</span> <span id="trendSub"></span></dd>
+          <dt>Rychlost</dt><dd><b class="num" id="rate">–</b> <span id="rateSub"></span></dd>
+          <dt>Pravděpodobnost</dt><dd><b class="num" id="prob">–</b> <label for="deadline">natopeno do <input type="time" id="deadline"></label></dd>
+        </dl>
+        <div class="note" id="notes"></div>
+        <div class="row" id="coolCtl" hidden>
+          <label for="coTa">okolí °C <input type="number" id="coTa" step="0.5" placeholder="auto (předpověď)"></label>
+          <label for="coThr">hranice °C <input type="number" id="coThr" step="0.5"></label>
+          <label for="coStart">konec natápění <input type="time" id="coStart"></label>
+        </div>
+        <div class="row" id="heatCtl">
+          <label for="target">cíl °C <input type="number" id="target" value="40" step="0.5"></label>
+          <span class="small">okno trendu</span>
+          <span class="seg" id="winSeg" aria-label="Okno trendu">
+            <button type="button" data-w="30">30 min</button><button type="button" data-w="60" aria-pressed="true">60 min</button><button type="button" data-w="90">90 min</button><button type="button" data-w="0">od startu</button>
+          </span>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <details class="sec" id="secEntry" open>
+    <summary><h2>Aktuální zápis</h2></summary>
+    <div class="secbody">
+      <form class="row" id="manForm">
+        <label for="manTime">čas <input type="time" id="manTime" required></label>
+        <label for="manTemp">°C <input type="number" id="manTemp" step="0.1" required></label>
+        <label for="manStoke" id="manStokeL"><input type="checkbox" id="manStoke"> přiloženo</label>
+        <label for="manMix"><input type="checkbox" id="manMix"> zamícháno</label>
+        <label for="manBath"><input type="checkbox" id="manBath"> koupání / bez víka</label>
+        <label for="manAmb">okolí °C <input type="number" id="manAmb" step="0.5" placeholder="auto"></label>
+        <button class="btn primary" type="submit">Zapsat</button>
+      </form>
+      <div class="fb" id="entryFb" aria-live="polite"></div>
+    </div>
+  </details>
+
+  <details class="sec" id="secStoke" open>
+    <summary><h2>Přikládání</h2><span class="sumline num" id="sumStoke"></span></summary>
+    <div class="secbody">
+      <div class="stoke" id="stokeCard">
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+            <div class="mid" id="stokeNext">–</div>
+            <div class="small" id="stokeSub"></div>
+          </div>
+          <button class="btn primary" id="stokeNow" type="button">Přiloženo teď</button>
+        </div>
+        <div class="small" id="stokePlan"></div>
+      </div>
+      <div class="row small">
+        <label for="stokeInt">interval přikládání min <input type="number" id="stokeInt" value="30" min="5" step="5"></label>
+        <label for="stokeNextIn">další v <input type="time" id="stokeNextIn"></label>
+        <label for="sound"><input type="checkbox" id="sound"> zvukové upozornění</label>
+      </div>
+    </div>
+  </details>
+
+  <details class="sec" id="secChart">
+    <summary><h2>Graf</h2></summary>
+    <div class="secbody">
+      <div class="row" style="justify-content:flex-end">
+        <span class="seg" id="viewSeg" aria-label="Rozsah grafu">
+          <button type="button" data-v="heat" aria-pressed="true">Ohřev</button><button type="button" data-v="all">Celý záznam</button>
+        </span>
+      </div>
+      <div id="chart"></div>
+      <div class="legend">
+        <span><i style="background:var(--water)"></i>měření (CSV)</span>
+        <span><i style="background:var(--heat);height:8px;width:8px;border-radius:50%"></i>ruční zápis</span>
+        <span><i style="background:var(--heat)"></i>trend + extrapolace</span>
+        <span><i style="background:var(--band);height:10px"></i>95% pásmo</span>
+        <span><i style="background:var(--pause);height:10px"></i>zastavení ohřevu / po natápění</span>
+        <span><i style="background:var(--water);opacity:.3;height:10px"></i>filtrace</span>
+        <span><i style="background:var(--ok);width:3px;height:10px"></i>přiložení (zaznamenané / plán)</span>
+      </div>
+    </div>
+  </details>
+
+  <details class="sec" id="secFilt">
+    <summary><h2>Filtrace</h2><span class="sumline num" id="sumFilt"></span></summary>
+    <div class="secbody">
+      <p class="small" style="margin:0">Denně opakované časy filtrace. Během filtrace a 15 min po ní se pokles teploty nehlásí jako chladnutí, protože se voda promíchá. Model chladnutí v tu dobu počítá se zrychlením.</p>
+      <div style="overflow-x:auto"><table><thead><tr><th>Začátek</th><th>Délka</th><th></th></tr></thead><tbody id="filtList"></tbody></table></div>
+      <form class="row" id="filtForm">
+        <label for="fiStart">začátek <input type="time" id="fiStart" required></label>
+        <label for="fiDur">min <input type="number" id="fiDur" min="5" step="5" value="30" required></label>
+        <button class="btn" type="submit">Přidat filtraci</button>
+      </form>
+      <div class="row">
+        <label for="fiFactor">zrychlení chladnutí při filtraci × <input type="number" id="fiFactor" min="1" step="0.1"></label>
+        <span class="small" id="fiEst"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="sec" id="secLog">
+    <summary><h2>Ruční zápisy</h2><span class="sumline" id="sumLog"></span></summary>
+    <div class="secbody">
+      <div style="overflow-x:auto"><table><thead><tr><th>Čas</th><th>Teplota</th><th>Okolí</th><th>Pozn.</th><th></th></tr></thead><tbody id="manList"></tbody></table></div>
+      <div class="row"><button class="btn" id="clearMan" type="button">Smazat ruční zápisy</button></div>
+    </div>
+  </details>
+
+  <details class="sec" id="secImport">
+    <summary><h2>Import dat</h2><span class="sumline" id="sumImport"></span></summary>
+    <div class="secbody">
+      <div class="drop" id="drop">Přetáhni CSV sem nebo
+        <label class="btn" for="file" style="color:var(--fg)">vyber soubor</label>
+        <input type="file" id="file" accept=".csv,.txt,.tsv" hidden>
+      </div>
+      <div class="small" id="importInfo"></div>
+      <div class="row"><button class="btn" id="sample" type="button">Načíst záznam 25. 10. 2026</button></div>
+      <div class="small">Formát: čas a teplota ve sloupcích (tabulátor, středník nebo čárka). Datum M/D/RRRR, D.M.RRRR nebo RRRR-MM-DD.</div>
+    </div>
+  </details>
+
+  <details class="sec method" id="secMethod">
+    <summary><h2>Jak se počítá</h2></summary>
+    <div class="secbody">
+    <p><b>Trend:</b> lineární regrese bodů v okně (výchozí posledních 60 min) od začátku ohřevu. U importu je začátek první bod, kdy teplota vystoupí o 0,5 °C nad klidovou hladinu. Při ručním režimu je začátkem počáteční teplota z resetu.</p>
+    <p><b>Sleduje trend:</b> poslední bod se porovná s predikcí z předchozích bodů. Odchylka do ±2σ (≈95 %) = sleduje trend. Rozptyl je zdola omezen 0,15 °C kvůli rozlišení čidla 0,1 °C.</p>
+    <p><b>Pravděpodobnost:</b> normální rozdělení času dosažení cíle z nejistoty regrese (inverzní predikce). Počítá se od 4 bodů; při 2–3 bodech je jen předběžný odhad bez pravděpodobnosti. Platí za předpokladu nepřerušeného ohřevu. Proto je uveden i konzervativní odhad z průměrné rychlosti od startu včetně pauz.</p>
+    <p><b>Umístění čidla:</b> čidlo je u hladiny, kde je voda nejteplejší. Bez zamíchání tedy ukazuje víc, než je průměrná teplota kádě; „natopeno“ ber jako hotové až po zamíchání a novém zápisu.</p>
+    <p><b>Dohřívání a zamíchání:</b> po ukončení natápění může teplota z rozžhaveného ohniště ještě stoupat; křivka chladnutí začíná až od maxima. Zápis označený „zamícháno“ nebo „koupání / bez víka“ nespouští varování a křivka se počítá znovu od něj, protože zamícháním se vyrovná teplejší horní vrstva s chladnější spodní.</p>
+    <p><b>Filtrace:</b> v nastavených časech (denně) se voda promíchá a chladne rychleji. Pokles v té době a 15 min po ní nespouští varování, páry bodů z filtrace se nepoužijí pro základní k a model v tu dobu počítá s k × zrychlení (výchozí ×2 je odhad, z dat se zobrazí odhad zrychlení).</p>
+    <p><b>Pokles:</b> po ukončení natápění se body od nejvyšší teploty proloží Newtonovým zákonem chladnutí T(t) = T<sub>okolí</sub> + (T<sub>0</sub> − T<sub>okolí</sub>)·e<sup>−kt</sup>. Konstanta k se odhaduje ze sousedních bodů, predikce se počítá krokováním po 5 min s proměnnou teplotou okolí. Teplota okolí se bere z předpovědi pro Kyselovice (denní minima a maxima, mezi nimi plynulá interpolace – není to hodinová předpověď) a mění se v čase; ruční zápis okolí u měření má přednost, konstantu lze zadat v Podrobnostech. Na teplotě okolí odhad silně závisí. Vítr, víko nebo kryt mění k, proto je stav „chladne rychleji / pomaleji“ porovnáním s dosavadní křivkou.</p>
+    <p><b>Omezení:</b> ohřev vody není lineární (s rostoucí teplotou rostou ztráty), takže lineární extrapolace spíše podhodnocuje čas. Jde o odhad, ne o ověřený model konkrétní kádě.</p>
+    </div>
+  </details>
+</div>
+
+<script>
+const SAMPLE=`Time	Temperature	Unit
+10/25/2026 00:00:00	7.8	℃
+10/25/2026 02:00:00	7.8	℃
+10/25/2026 04:00:00	7.7	℃
+10/25/2026 06:00:00	7.7	℃
+10/25/2026 08:00:00	7.7	℃
+10/25/2026 10:00:00	7.7	℃
+10/25/2026 12:00:00	7.7	℃
+10/25/2026 12:30:00	7.7	℃
+10/25/2026 12:40:00	7.7	℃
+10/25/2026 12:50:00	7.7	℃
+10/25/2026 13:00:00	7.8	℃
+10/25/2026 13:10:00	7.8	℃
+10/25/2026 13:20:00	7.8	℃
+10/25/2026 13:30:00	7.9	℃
+10/25/2026 13:40:00	8.0	℃
+10/25/2026 13:50:00	9.4	℃
+10/25/2026 14:00:00	11.2	℃
+10/25/2026 14:10:00	13.2	℃
+10/25/2026 14:20:00	14.2	℃
+10/25/2026 14:30:00	15.4	℃
+10/25/2026 14:40:00	16.6	℃
+10/25/2026 14:50:00	18.2	℃
+10/25/2026 15:00:00	18.6	℃
+10/25/2026 15:10:00	18.7	℃
+10/25/2026 15:20:00	19.0	℃
+10/25/2026 15:30:00	19.2	℃
+10/25/2026 15:40:00	19.2	℃
+10/25/2026 15:50:00	19.2	℃
+10/25/2026 16:00:00	20.8	℃
+10/25/2026 16:10:00	22.0	℃
+10/25/2026 16:20:00	22.4	℃
+10/25/2026 16:30:00	23.6	℃
+10/25/2026 16:40:00	24.4	℃
+10/25/2026 16:50:00	25.6	℃
+10/25/2026 17:00:00	26.6	℃
+10/25/2026 17:10:00	28.4	℃
+10/25/2026 17:20:00	29.8	℃
+10/25/2026 17:30:00	30.8	℃
+10/25/2026 17:40:00	31.6	℃
+10/25/2026 17:50:00	33.2	℃
+10/25/2026 18:00:00	34.0	℃
+10/25/2026 18:10:00	34.4	℃`;
+const SAMPLE_MANUAL=[{h:18,m:16,T:34.4}];
+
+/* ===== ANALYSIS (pure) ===== */
+const H=3.6e6, MIN=6e4;
+function parseCSV(text,refDate){
+  const out=[];let dup=0;
+  for(const raw of text.split(/\r?\n/)){
+    const line=raw.trim(); if(!line) continue;
+    const parts=line.includes('\t')?line.split('\t'):line.includes(';')?line.split(';'):line.split(',');
+    if(parts.length<2) continue;
+    const t=parseTime(parts[0].trim().replace(/^"|"$/g,''),refDate);
+    const T=parseFloat(parts[1].trim().replace(/^"|"$/g,'').replace(',','.'));
+    if(t==null||!isFinite(T)) continue;
+    out.push({t,T,src:'csv'});
+  }
+  return out;
+}
+function parseTime(s,refDate){
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if(m) return new Date(+m[1],m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0)).getTime();
+  m=s.match(/^(\d{1,2})([\/.\-])(\d{1,2})\2(\d{2,4})[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if(m){let y=+m[4];if(y<100)y+=2000;const us=m[2]==='/';const mo=us?+m[1]:+m[3],d=us?+m[3]:+m[1];
+    return new Date(y,mo-1,d,+m[5],+m[6],+(m[7]||0)).getTime();}
+  m=s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if(m&&refDate){const r=new Date(refDate);return new Date(r.getFullYear(),r.getMonth(),r.getDate(),+m[1],+m[2],+(m[3]||0)).getTime();}
+  return null;
+}
+function mergePts(base,manual){
+  const map=new Map();let dup=0;
+  for(const p of base){const k=Math.round(p.t/1000);if(map.has(k))dup++;map.set(k,p);}
+  for(const p of manual){map.set(Math.round(p.t/1000),p);}
+  return {pts:[...map.values()].sort((a,b)=>a.t-b.t),dup};
+}
+function linfit(P,t0){
+  const n=P.length,xs=P.map(p=>(p.t-t0)/H),ys=P.map(p=>p.T);
+  const xm=xs.reduce((a,b)=>a+b,0)/n, ym=ys.reduce((a,b)=>a+b,0)/n;
+  let Sxx=0,Sxy=0,Syy=0;for(let i=0;i<n;i++){Sxx+=(xs[i]-xm)**2;Sxy+=(xs[i]-xm)*(ys[i]-ym);Syy+=(ys[i]-ym)**2}
+  const b=Sxx>0?Sxy/Sxx:0,a=ym-b*xm;let sse=0;for(let i=0;i<n;i++)sse+=(ys[i]-a-b*xs[i])**2;
+  const sRaw=n>2?Math.sqrt(sse/(n-2)):0,s=Math.max(sRaw,0.15);
+  return {n,a,b,s,sRaw,xm,Sxx,r2:Syy>0?1-sse/Syy:1,t0,
+    pred:x=>a+b*x, se:x=>s*Math.sqrt(1+1/n+(Sxx>0?(x-xm)**2/Sxx:0))};
+}
+function erf(x){const s=Math.sign(x);x=Math.abs(x);const t=1/(1+0.3275911*x);
+  const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return s*y}
+const Phi=z=>0.5*(1+erf(z/Math.SQRT2));
+function findStart(pts){
+  if(pts.length<4) return 0;
+  const k=Math.max(3,Math.floor(pts.length*0.2));
+  const base=pts.slice(0,k).map(p=>p.T).sort((a,b)=>a-b)[Math.floor(k/2)];
+  const i=pts.findIndex(p=>p.T>base+0.5);
+  return i<=0?0:i-1;
+}
+function findPauses(P,thr=2,minDur=20){
+  const runs=[];let cur=null;
+  for(let i=1;i<P.length;i++){
+    const r=(P[i].T-P[i-1].T)/((P[i].t-P[i-1].t)/H);
+    if(r<thr){if(!cur)cur={a:P[i-1].t,b:P[i].t};else cur.b=P[i].t}
+    else if(cur){runs.push(cur);cur=null}
+  }
+  const ongoing=cur;if(cur)runs.push(cur);
+  return {done:runs.filter(r=>r!==ongoing&&(r.b-r.a)/MIN>=minDur),ongoing:ongoing&&(ongoing.b-ongoing.a)/MIN>=5?ongoing:null,all:runs};
+}
+function analyze(pts,{target=40,winMin=60,manualOnly=false}={}){
+  const R={target,ok:false};
+  if(pts.length<2){R.msg=pts.length?'Zapiš další teplotu – odhad potřebuje alespoň 2 body.':'Žádná data. Zapiš teplotu nebo importuj CSV.';return R}
+  const si=manualOnly?0:findStart(pts),start=pts[si],heat=pts.slice(si),last=pts[pts.length-1];
+  R.start=start;R.last=last;R.heat=heat;
+  if(heat.length<2){R.msg='Ohřev zatím nezačal.';return R}
+  if(heat.length<4){const h=(last.t-start.t)/H;if(h<=0){R.msg='Zapiš další teplotu.';return R}
+    R.prelim=true;R.rate=R.rateAvg=R.rateShort=(last.T-start.T)/h;R.rateShortFrom=start.t;R.pauses={done:[],ongoing:null};R.ok=true;
+    if(last.T>=target){R.reached=heat.find(p=>p.T>=target).t;return R}
+    if(R.rate<0.3){R.msg='Teplota neroste – čas nelze odhadnout.';R.noEta=true;return R}
+    R.eta=last.t+(target-last.T)/R.rate*H;R.sigma=null;return R}
+  const pick=P=>{const tl=P[P.length-1].t;let w=winMin>0?P.filter(p=>p.t>=tl-winMin*MIN):P.slice();if(w.length<4)w=P.slice(-4);return w};
+  const win=pick(heat);R.win=win;
+  const f=linfit(win,last.t);R.fit=f;R.rate=f.b;
+  // short-term rate (≈ last 15 min)
+  const recent=heat.filter(p=>p.t>=last.t-15*MIN);const r0=recent.length>=2?recent[0]:heat[heat.length-2];
+  R.rateShort=(last.T-r0.T)/((last.t-r0.t)/H);R.rateShortFrom=r0.t;
+  // trend check: fit without last point, predict last
+  const prior=pick(heat.slice(0,-1));
+  if(prior.length>=3){const fp=linfit(prior,last.t);const pr=fp.pred(0),se=fp.se(0);
+    R.check={pred:pr,se,z:(last.T-pr)/se,dev:last.T-pr}}
+  R.pauses=findPauses(heat);
+  // conservative: avg since start
+  R.rateAvg=(last.T-start.T)/((last.t-start.t)/H);
+  if(last.T>=target){R.reached=pts.find((p,i)=>i>=si&&p.T>=target).t;R.ok=true;return R}
+  if(f.b<0.3){R.msg='Teplota v okně trendu neroste – čas nelze odhadnout.';R.ok=true;R.noEta=true;
+    if(R.rateAvg>0.3)R.etaCons=last.t+(target-last.T)/R.rateAvg*H;return R}
+  let x=(target-f.a)/f.b;if(x<0)x=0;
+  R.eta=last.t+x*H;R.sigma=Math.max(f.se(x)/f.b*H,3*MIN);
+  if(R.rateAvg>0.3)R.etaCons=last.t+(target-last.T)/R.rateAvg*H;
+  R.ok=true;return R;
+}
+function probBy(R,t){return R.eta&&R.sigma?Phi((t-R.eta)/R.sigma):(R.reached&&t>=R.reached?1:null)}
+function logfit(D,t0,Ta){
+  const n=D.length,xs=D.map(p=>(p.t-t0)/H),ys=D.map(p=>Math.log(p.T-Ta));
+  const xm=xs.reduce((a,b)=>a+b,0)/n,ym=ys.reduce((a,b)=>a+b,0)/n;let Sxx=0,Sxy=0;
+  for(let i=0;i<n;i++){Sxx+=(xs[i]-xm)**2;Sxy+=(xs[i]-xm)*(ys[i]-ym)}
+  const b=Sxx>0?Sxy/Sxx:0,a=ym-b*xm;let sse=0;for(let i=0;i<n;i++)sse+=(ys[i]-a-b*xs[i])**2;
+  return {n,a,b,xm,Sxx,s:n>2?Math.sqrt(sse/(n-2)):0,pred:x=>Ta+Math.exp(a+b*x)};
+}
+/* Okolí: předpověď Kyselovice (49.377 N, 17.402 E), stažena 25. 10. 2026 19:46.
+   Kotvy = denní min (07:00) a max (14:00) + aktuální hodnota; mezi nimi kosinová interpolace (aproximace, ne hodinová předpověď). */
+const WEATHER={place:'Kyselovice',fetched:'2026-10-25T19:46:00+01:00',anchors:[
+ ['2026-10-25T07:00:00+01:00',1.0],['2026-10-25T14:00:00+01:00',11.4],['2026-10-25T19:46:00+01:00',8.0],
+ ['2026-10-26T07:00:00+01:00',-0.8],['2026-10-26T14:00:00+01:00',12.1],['2026-10-27T07:00:00+01:00',-1.2],['2026-10-27T14:00:00+01:00',13.1],
+ ['2026-10-28T07:00:00+01:00',-1.2],['2026-10-28T14:00:00+01:00',11.6],['2026-10-29T07:00:00+01:00',5.4],['2026-10-29T14:00:00+01:00',12.3],
+ ['2026-10-30T07:00:00+01:00',5.6],['2026-10-30T14:00:00+01:00',11.7],['2026-10-31T07:00:00+01:00',4.6],['2026-10-31T14:00:00+01:00',11.2],
+ ['2026-11-01T07:00:00+01:00',4.0],['2026-11-01T14:00:00+01:00',10.7]].map(([t,T])=>({t:Date.parse(t),T}))};
+function interpCos(S,t){if(!S.length)return null;if(t<=S[0].t)return S[0].T;if(t>=S[S.length-1].t)return S[S.length-1].T;
+  let i=1;while(S[i].t<t)i++;const a=S[i-1],b=S[i],f=(t-a.t)/(b.t-a.t),w=(1-Math.cos(Math.PI*f))/2;return a.T+(b.T-a.T)*w}
+const forecastAt=t=>interpCos(WEATHER.anchors,t);
+const inForecast=t=>t>=WEATHER.anchors[0].t-6*H&&t<=WEATHER.anchors[WEATHER.anchors.length-1].t+6*H;
+function makeAmbient(manualPts,constTa){
+  if(constTa!=null)return Object.assign(()=>constTa,{src:'ručně (konstanta)'});
+  const meas=manualPts.filter(p=>p.ambSrc==='man'&&isFinite(p.amb)).map(p=>({t:p.t,T:p.amb}));
+  const S=WEATHER.anchors.filter(a=>!meas.some(m=>Math.abs(m.t-a.t)<90*MIN)).concat(meas).sort((a,b)=>a.t-b.t);
+  return Object.assign(t=>interpCos(S,t),{src:meas.length?'předpověď + ruční měření':'předpověď '+WEATHER.place});
+}
+let FILT=[];
+function filtWins(a,b){const out=[];const d0=new Date(a);let day=new Date(d0.getFullYear(),d0.getMonth(),d0.getDate()-1).getTime();
+  for(;day<=b;day=new Date(new Date(day).getFullYear(),new Date(day).getMonth(),new Date(day).getDate()+1).getTime()){const dd=new Date(day);
+    FILT.forEach(w=>{const st=new Date(dd.getFullYear(),dd.getMonth(),dd.getDate(),w.h,w.m).getTime(),en=st+w.d*MIN;if(en>a&&st<b)out.push({a:st,b:en})})}
+  return out}
+const inFilt=t=>filtWins(t-1,t+1).some(w=>t>=w.a&&t<w.b);
+const nearFilt=(a,b,pad=15*MIN)=>filtWins(a-pad,b).some(w=>w.a<b&&w.b+pad>a);
+/* Newton s proměnnou teplotou okolí: dT/dt = -k (T - Ta(t)); k z párů sousedních bodů, predikce integrací po 5 min. */
+function analyzeCool(pts,{coolStart,amb,thr,F=2}){
+  const Rc={cool:true,thr,ok:false,amb};
+  let C=pts.filter(p=>p.t>=coolStart);const anchor=pts.filter(p=>p.t<=coolStart).pop();
+  if(anchor&&(!C.length||C[0].t!==anchor.t))C=[anchor,...C];
+  Rc.C=C;Rc.last=C[C.length-1]||pts[pts.length-1];if(Rc.last)Rc.Ta=amb(Rc.last.t);
+  if(C.length<2){Rc.msg='Zapiš teplotu – sledování poklesu potřebuje alespoň 2 body od konce natápění.';return Rc}
+  const last=C[C.length-1];Rc.ok=true;
+  Rc.peak=C.reduce((m,p)=>p.T>=m.T?p:m,C[0]);
+  const rec=C.filter(p=>p.t>=last.t-30*MIN),r0=rec.length>=2?rec[0]:C[C.length-2];
+  Rc.rateShort=(last.T-r0.T)/((last.t-r0.t)/H);Rc.rateShortFrom=r0.t;
+  if(last.T<=thr)Rc.below=(C.find(p=>p.t>=Rc.peak.t&&p.T<=thr)||last).t;
+  const mixes=C.filter(p=>p.mix||p.bath);Rc.mixAt=mixes.length?mixes[mixes.length-1].t:null;Rc.lastIsMix=!!(last.mix||last.bath);Rc.lastIsBath=!!last.bath;
+  const base=Rc.mixAt&&Rc.mixAt>Rc.peak.t?Rc.mixAt:Rc.peak.t;Rc.base=base;
+  const D=C.filter(p=>p.t>=base&&p.T-amb(p.t)>0.3);
+  if(D.length<2||last.t===base){if(last.t===Rc.peak.t||!Rc.mixAt){Rc.rising=true;Rc.msg='Teplota zatím neklesá.'}else Rc.msg='Po zamíchání/koupání – křivka se vyhodnotí z dalších zápisů.';return Rc}
+  const kfit=(P,mode)=>{let sxx=0,sxy=0;const pr=[];for(let i=1;i<P.length;i++){const a=P[i-1],b=P[i],dt=(b.t-a.t)/H;
+      const nf_=nearFilt(a.t,b.t);if(mode==='norm'&&nf_)continue;if(mode==='filt'&&!nf_)continue;
+      const X=dt*((a.T+b.T)/2-(amb(a.t)+amb(b.t))/2),Y=b.T-a.T;pr.push([X,Y]);sxx+=X*X;sxy+=X*Y}
+    const k=sxx>0?-sxy/sxx:0;let sse=0;pr.forEach(([X,Y])=>sse+=(Y+k*X)**2);const m=pr.length;
+    return {k,m,sd:m>1?Math.sqrt(sse/(m-1)):0,se:m>1&&sxx>0?Math.sqrt(sse/(m-1)/sxx):null}};
+  let f=kfit(D,'norm');if(f.m<1)f=kfit(D);f.n=D.length;Rc.fit=f;Rc.k=f.k;
+  const ff=kfit(D,'filt');Rc.Fest=ff.m>=1&&f.k>0.0005&&ff.k>0?ff.k/f.k:null;Rc.F=F;Rc.lastInFilt=nearFilt(C[C.length-2].t,last.t);
+  if(Rc.k<=0.0005){Rc.rising=true;Rc.msg='Teplota neklesá.';return Rc}
+  const sim=(k,t0,T0,tEnd,stopBelow)=>{let t=t0,T=T0;const st=5*MIN,path=[[t,T]];
+    while(t<tEnd){const dt=Math.min(st,tEnd-t),tm=t+dt/2;T+=-k*(inFilt(tm)?F:1)*(T-amb(tm))*dt/H;t+=dt;path.push([t,T]);if(stopBelow!=null&&T<=stopBelow)return{t,T,path,hit:true}}
+    return{t,T,path,hit:false}};
+  Rc.sim=(tEnd)=>sim(Rc.k,last.t,last.T,tEnd).path;
+  Rc.rateNow=-Rc.k*(last.T-amb(last.t));Rc.in1h=sim(Rc.k,last.t,last.T,last.t+H).T;
+  if(!Rc.below){const r=sim(Rc.k,last.t,last.T,last.t+48*H,thr);if(r.hit){Rc.tThr=r.t;
+    if(f.se){const a=sim(Rc.k+f.se,last.t,last.T,last.t+48*H,thr),b=sim(Math.max(Rc.k-f.se,1e-4),last.t,last.T,last.t+96*H,thr);
+      const sK=b.hit&&a.hit?Math.abs(b.t-a.t)/2:Infinity,sR=0.15/Math.max(Math.abs(Rc.rateNow),0.05)*H;Rc.sigma=Math.max(Math.sqrt(sK*sK+sR*sR),3*MIN);if(!isFinite(Rc.sigma))Rc.sigma=null}}}
+  if(D.length>=4&&!Rc.lastInFilt){let fp=kfit(D.slice(0,-1),'norm');if(fp.m<1)fp=kfit(D.slice(0,-1));const pv=D[D.length-2];const pr=sim(fp.k,pv.t,pv.T,last.t).T;
+    const se=Math.max(fp.sd,0.15);Rc.check={pred:pr,se,dev:last.T-pr,z:(last.T-pr)/se}}
+  return Rc;
+}
+/* ===== END ANALYSIS ===== */
+
+/* ===== UI ===== */
+const $=id=>document.getElementById(id);
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let filt=[{h:2,m:0,d:30},{h:4,m:0,d:30},{h:6,m:0,d:30},{h:10,m:0,d:120}],filtF=2,mode='heat',coolStart=null,coolTa=null,coolThr=37,csvText=SAMPLE,csvName='záznam 25. 10. 2026',manual=null,winMin=60,view='heat',deadlineTouched=false,dupCount=0;
+const fmt=t=>{const d=new Date(t);return d.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})};
+const fmtD=(t,ref)=>{const d=new Date(t),r=new Date(ref);const s=fmt(t);return d.toDateString()===r.toDateString()?s:s+' ('+d.getDate()+'. '+(d.getMonth()+1)+'.)'};
+const nf=(v,d=1)=>v.toLocaleString('cs-CZ',{minimumFractionDigits:d,maximumFractionDigits:d});
+const toHM=t=>{const d=new Date(t);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+
+function basePts(){return parseCSV(csvText,Date.now())}
+function lastCsvT(){const b=basePts();return b.length?b.reduce((m,p)=>Math.max(m,p.t),0):Date.now()}
+function manualFromHM(hm,T){
+  const [h,m]=hm.split(':').map(Number);const n=new Date();
+  let t=new Date(n.getFullYear(),n.getMonth(),n.getDate(),h,m).getTime();
+  if(t>Date.now()+60*MIN)t-=24*H;return {t,T,src:'man'};
+}
+function load(){
+  const s=store.get('kad_state');
+  if(s&&typeof s.csvText==='string'){csvText=s.csvText;csvName=s.csvName||'import';manual=s.manual||[];mode=s.mode||'heat';if(Array.isArray(s.filt))filt=s.filt;if(s.filtF)filtF=s.filtF;coolStart=s.coolStart||null;coolTa=s.coolTa??null;coolThr=s.coolThr??37;}
+  else{manual=SAMPLE_MANUAL.map(x=>manualFromHM(x.h+':'+x.m,x.T));}
+}
+function save(){store.set('kad_state',{csvText,csvName,manual,mode,coolStart,coolTa,coolThr,filt,filtF});scheduleDb()}
+
+function render(){
+  const target=parseFloat($('target').value)||40;
+  const {pts,dup}=mergePts(basePts(),manual);dupCount=dup;
+  const manualOnly=basePts().length===0;
+  const R=analyze(pts,{target,winMin,manualOnly});
+  $('lblEta').textContent='Odhad '+nf(target,target%1?1:0)+' °C';
+  const fa=forecastAt(Date.now());$('manAmb').placeholder='auto '+(inForecast(Date.now())?nf(fa):'–');
+  $('sumImport').textContent=manualOnly?'bez importu – ruční režim':csvName;
+  $('importInfo').textContent=manualOnly?'Bez importu – odhad jen z ručních zápisů.':csvName+': '+basePts().length+' řádků'+(dup?', '+dup+' duplicitních časů sloučeno':'')+(basePts().some(p=>inForecast(p.t))?' · okolí proloženo z předpovědi':'')+(pts.length?' · poslední '+fmtD(pts[pts.length-1].t,pts[pts.length-1].t)+' '+nf(pts[pts.length-1].T)+' °C':'');
+  FILT=filt;renderFilt();
+  renderManual();
+  setModeUI();
+  if(mode==='cool'){renderCool(pts,R);return}
+  const pill=$('trendPill');pill.className='pill';
+  if(!R.ok){$('eta').textContent='–';$('etaSub').textContent=R.msg||'';pill.textContent='–';$('trendSub').textContent='';$('rate').textContent='–';$('rateSub').textContent='';$('prob').textContent='–';$('notes').innerHTML='<div>'+(R.msg||'')+'</div>';setTiles(R,null);renderAlerts(R);draw(pts,R);return}
+  const ref=R.last.t;
+  // ETA
+  if(R.reached){$('eta').textContent='natopeno';$('etaSub').textContent='cíl dosažen v '+fmtD(R.reached,ref);}
+  else if(R.eta&&R.prelim){$('eta').textContent='≈ '+fmtD(R.eta,ref);$('etaSub').textContent='předběžně ze '+R.heat.length+' bodů; přesnost a pravděpodobnost od 4 bodů';}
+  else if(R.eta){$('eta').textContent=fmtD(R.eta,ref);const m=Math.round(R.sigma/MIN);
+    $('etaSub').innerHTML='za '+Math.round((R.eta-ref)/MIN)+' min od posledního bodu · ±'+m+' min (1σ)<br>95% interval '+fmt(R.eta-1.96*R.sigma)+'–'+fmt(R.eta+1.96*R.sigma);}
+  else{$('eta').textContent='nelze';$('etaSub').textContent=R.msg||'';}
+  // trend
+  if(R.check){const z=R.check.z;let cls,txt;
+    if(Math.abs(z)<=2){cls='ok';txt='Ano, sleduje'}
+    else if(z<-2){cls=R.rateShort<1?'bad':'warn';txt=R.rateShort<1?'Ne – ohřev stojí':'Ne – zpomaluje'}
+    else{cls='warn';txt='Rychleji než trend'}
+    pill.classList.add(cls);pill.textContent=txt;
+    $('trendSub').textContent='naměřeno '+nf(R.last.T)+' °C, trend čekal '+nf(R.check.pred)+' °C ('+(R.check.dev>=0?'+':'')+nf(R.check.dev)+' °C, '+nf(z,1)+'σ)';}
+  else{pill.textContent='málo bodů';$('trendSub').textContent='';}
+  // rate
+  $('rate').textContent=nf(R.rate)+' °C/h';
+  $('rateSub').textContent='posledních '+Math.round((R.last.t-R.rateShortFrom)/MIN)+' min: '+nf(R.rateShort)+' °C/h · průměr od startu '+nf(R.rateAvg)+' °C/h';
+  // deadline/probability
+  if(R.eta&&!deadlineTouched){const d=Math.ceil((R.eta+30*MIN)/(5*MIN))*5*MIN;$('deadline').value=toHM(d)}
+  const dl=$('deadline').value;
+  if(dl&&((R.eta&&R.sigma)||R.reached)){const [h,m]=dl.split(':').map(Number);const r=new Date(ref);
+    let t=new Date(r.getFullYear(),r.getMonth(),r.getDate(),h,m).getTime();if(t<ref-6*H)t+=24*H;
+    const p=probBy(R,t);$('prob').textContent=p==null?'–':(p>0.99?'> 99 %':p<0.01?'< 1 %':Math.round(p*100)+' %');setTiles(R,p,dl);}
+  else{$('prob').textContent='–';setTiles(R,null,dl);}
+  renderAlerts(R);
+  // notes
+  const n=[];
+  if(R.eta&&R.etaCons)n.push('<div><b>Rozpětí scénářů:</b> pokud ohřev běží dál tempem trendu → <span class="num">'+fmtD(R.eta,ref)+'</span>; konzervativně (průměrné tempo od startu vč. pauz '+nf(R.rateAvg)+' °C/h) → <span class="num">'+fmtD(R.etaCons,ref)+'</span>.</div>');
+  else if(R.noEta&&R.etaCons)n.push('<div><b>Konzervativní odhad</b> (průměr od startu): <span class="num">'+fmtD(R.etaCons,ref)+'</span> – platí jen pokud se ohřev obnoví.</div>');
+  if(R.prelim)n.push('<div>Start '+fmtD(R.start.t,ref)+' při '+nf(R.start.T)+' °C. Průměrné tempo '+nf(R.rate)+' °C/h. Kontrola trendu a pravděpodobnost se zapnou od 4 zápisů.</div>');
+  if(R.pauses.ongoing)n.push('<div><b>Právě probíhá zpomalení/zastavení</b> od '+fmt(R.pauses.ongoing.a)+' ('+Math.round((R.pauses.ongoing.b-R.pauses.ongoing.a)/MIN)+' min). Pokud bude pokračovat, odhad se posune; pravděpodobnost platí jen pro nepřerušený ohřev.</div>');
+  if(R.pauses.done.length)n.push('<div>Dřívější zastavení ohřevu: '+R.pauses.done.map(p=>fmt(p.a)+'–'+fmt(p.b)+' ('+Math.round((p.b-p.a)/MIN)+' min)').join(', ')+'.</div>');
+  if(R.fit)n.push('<div class="small">Start ohřevu '+fmtD(R.start.t,ref)+' při '+nf(R.start.T)+' °C · trend z '+R.fit.n+' bodů, R² '+nf(R.fit.r2,3)+', σ '+nf(R.fit.sRaw,2)+' °C'+(dupCount?' · duplicitní časy (typicky přechod na zimní čas) sloučeny':'')+'.</div>');
+  $('notes').innerHTML=n.join('');
+  draw(pts,R);
+}
+
+/* ===== Přikládání ===== */
+let stoke={interval:30,next:null,log:[]},lastR=null,beeped=null,audio=null;
+function loadStoke(){const s=store.get('kad_stoke');if(s&&Array.isArray(s.log)){stoke=s;return}
+  const ref=new Date(lastCsvT());stoke.next=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate(),18,20).getTime();}
+function saveStoke(){store.set('kad_stoke',stoke);scheduleDb()}
+function stokePlan(R){
+  if(!stoke.next||!R||R.reached)return[];
+  const end=R.eta||R.etaCons;if(!end)return[stoke.next];
+  const out=[];for(let t=stoke.next;t<end&&out.length<24;t+=stoke.interval*MIN)out.push(t);return out;
+}
+function beep(){try{if(!audio)return;const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=880;g.gain.value=0.15;o.connect(g);g.connect(audio.destination);o.start();
+  o.stop(audio.currentTime+0.25);setTimeout(()=>{const o2=audio.createOscillator();o2.frequency.value=880;o2.connect(g);o2.start();o2.stop(audio.currentTime+0.25)},400)}catch(e){}}
+function setModeUI(){
+  const c=mode==='cool';$('secStoke').hidden=c;$('manStokeL').hidden=c;$('heatKv').hidden=c;$('heatCtl').hidden=c;$('coolCtl').hidden=!c;
+  $('endOpen').hidden=c;$('modeChip').hidden=!c;if(c)$('modeChip').textContent='Pokles od '+fmt(coolStart);
+  document.querySelector('.sub').textContent=c?'Sledování poklesu teploty po ukončení natápění.':'Odhad času dosažení cílové teploty z měřených hodnot čas / teplota.';
+}
+function renderCool(pts,Rh){
+  const thr=coolThr,amb=makeAmbient(manual,coolTa);
+  if(document.activeElement!==$('coTa'))$('coTa').value=coolTa??'';if(document.activeElement!==$('coThr'))$('coThr').value=thr;
+  if(document.activeElement!==$('coStart'))$('coStart').value=toHM(coolStart);
+  FILT=filt;const C=analyzeCool(pts,{coolStart,amb,thr,F:filtF});const Ta=C.Ta;
+  const set=(id,cls,lbl,v,sub)=>{$(id).className='tile'+(cls?' '+cls:'');$(id+'L').textContent=lbl;$(id+'V').textContent=v;$(id+'S').textContent=sub||''};
+  const tl='Pod '+nf(thr,thr%1?1:0)+' °C';
+  let chk=null;if(C.check){const z=C.check.z;chk=Math.abs(z)<=2?['Na křivce','ok']:z<-2?['Chladne rychleji','warn']:['Chladne pomaleji','ok']}
+  if(!C.ok){set('tEta','',tl,'–','zapiš teplotu');set('tTrend','','Pokles','–','');set('tProb','','Za 1 h','–','')}
+  else{
+    const now=C.last.t;
+    if(C.below)set('tEta','bad',tl,fmt(C.below),'už pod hranicí');
+    else if(C.tThr){const left=(C.tThr-now)/MIN;set('tEta',left>60?'ok':left>15?'warn':'bad',tl,fmt(C.tThr),C.sigma?'±'+Math.round(C.sigma/MIN)+' min':'za '+Math.round(left)+' min · předběžně')}
+    else set('tEta','ok',tl,'–',C.rising?'zatím neklesá':C.mixAt&&!C.fit?'po zamíchání':'hranice pod okolím');
+    const r=C.rateNow!=null?-C.rateNow:-C.rateShort;
+    set('tTrend',chk?chk[1]:(C.rising?'ok':''),'Pokles',(r>0?'−':'+')+nf(Math.abs(r)),'°C/h'+(C.lastInFilt?' · filtrace':C.rising?' · dohřívá z ohniště':C.lastIsBath?' · po koupání':C.lastIsMix?' · po zamíchání':chk?' · '+chk[0]:C.fit&&!C.check?' · málo bodů':''));
+    if(C.in1h!=null)set('tProb',C.in1h>thr?'ok':'warn','Za 1 h',nf(C.in1h)+' °C','podle křivky');else set('tProb','','Za 1 h','–','');
+  }
+  // alerts
+  const al=$('alert');let a=null;
+  if(C.ok&&C.below)a=['bad','<b>Teplota pod hranicí '+nf(thr,thr%1?1:0)+' °C</b> od '+fmt(C.below)+' (teď '+nf(C.last.T)+' °C).'];
+  else if(C.ok&&C.tThr&&C.tThr-C.last.t<30*MIN)a=['warn','<b>Za ~'+Math.max(1,Math.round((C.tThr-C.last.t)/MIN))+' min</b> klesne teplota pod '+nf(thr,thr%1?1:0)+' °C.'];
+  else if(chk&&chk[1]==='warn'&&!C.lastIsMix&&!C.lastInFilt)a=['warn','<b>Chladne rychleji</b> než podle dosavadního průběhu ('+nf(C.check.dev)+' °C proti křivce).'];
+  if(a){al.hidden=false;al.className='alert '+a[0];al.innerHTML='<span>'+a[1]+'</span>';const k=a[0]+(C.below||'')+(C.last&&C.last.t);if(k!==lastWarnKey){lastWarnKey=k;if($('sound').checked)beep()}}else{al.hidden=true;lastWarnKey=null}
+  // entry feedback
+  const fb=$('entryFb');
+  if(!C.ok)fb.innerHTML='<span class="small">'+C.msg+'</span>';
+  else{let tag,cls,txt;
+    if(C.lastInFilt&&C.rateShort<0){tag='Filtrace';cls='ok';txt='pokles během filtrace je očekávaný (promíchání + rychlejší chladnutí)'}
+    else if(C.lastIsBath){tag='Po koupání';cls='ok';txt='rychlejší pokles bez víka a při koupání je očekávaný; křivka se počítá od tohoto bodu'}
+    else if(C.lastIsMix){tag='Po zamíchání';cls='ok';txt='pokles po zamíchání je očekávaný (vyrovnání vrstev); křivka se počítá od tohoto bodu'}
+    else if(C.rising){tag='Dohřívá';cls='ok';txt='teplota po ukončení stoupá – dohřívání z ohniště'}
+    else if(chk){tag=chk[0];cls=chk[1];txt=(C.check.dev>=0?'+':'')+nf(C.check.dev)+' °C proti křivce (čekáno '+nf(C.check.pred)+' °C)'}
+    else{tag='Málo dat';cls='warn';txt='porovnání s křivkou od 4 bodů poklesu'}
+    if(C.below){tag='Pod hranicí';cls='bad'}
+    fb.innerHTML='<span>Poslední '+fmt(C.last.t)+' <b class="num">'+nf(C.last.T)+' °C</b></span><span class="tag '+cls+'">'+tag+'</span><span class="small">'+txt+'</span>'}
+  // notes
+  const n=[];
+  n.push('<div>Konec natápění '+fmt(coolStart)+(C.peak?' · maximum '+nf(C.peak.T)+' °C v '+fmt(C.peak.t):'')+(C.mixAt?' · poslední zamíchání/koupání '+fmt(C.mixAt)+' (křivka od něj)':'')+'.</div>');
+  if(C.last)n.push('<div>Okolí: '+amb.src+' – teď '+nf(Ta)+' °C'+(C.in1h!=null?', za 1 h '+nf(amb(C.last.t+H))+' °C':'')+'.</div>');
+  if(C.fit)n.push('<div>Křivka chladnutí: k = '+nf(C.k,3)+' /h (poločas rozdílu proti okolí '+nf(Math.log(2)/C.k,1)+' h), z '+C.fit.n+' bodů.'+(C.tThr?' Pod '+nf(thr,thr%1?1:0)+' °C v '+fmtD(C.tThr,C.last.t)+(C.sigma?' (95% '+fmt(C.tThr-1.96*C.sigma)+'–'+fmt(C.tThr+1.96*C.sigma)+')':'')+'.':'')+'</div>');
+  {const nx=filtWins(Date.now(),Date.now()+24*H).sort((a,b)=>a.a-b.a)[0];n.push('<div>Filtrace: zrychlení ×'+nf(filtF)+(C.Fest?' (z dat ×'+nf(C.Fest)+')':'')+(nx?' · další '+fmt(nx.a)+'–'+fmt(nx.b):'')+'.</div>')}
+  if(C.ok)n.push('<div class="small">Posledních '+Math.round((C.last.t-C.rateShortFrom)/MIN)+' min: '+nf(C.rateShort)+' °C/h.</div>');
+  if(!C.ok)n.push('<div>'+C.msg+'</div>');
+  $('notes').innerHTML=n.join('');
+  drawCool(pts,C,Rh);
+}
+function drawCool(pts,C,Rh){
+  renderStokeSum();
+  const el=$('chart');const W=Math.max(300,el.clientWidth||600),Hh=Math.round(Math.max(260,Math.min(420,W*0.55)));
+  const css=getComputedStyle(document.documentElement);const c=k=>css.getPropertyValue(k).trim();
+  if(!pts.length){el.innerHTML='';return}
+  const L=44,Rr=14,T=14,B=30,iw=W-L-Rr,ih=Hh-T-B;
+  let x0=view==='heat'&&Rh&&Rh.start?Rh.start.t-20*MIN:pts[0].t;
+  const last=pts[pts.length-1];let x1=Math.max(last.t,coolStart)+60*MIN;
+  if(C.tThr)x1=Math.max(x1,Math.min(C.tThr+(C.sigma?2*C.sigma:0),last.t+12*H));x1+=10*MIN;
+  const vis=pts.filter(p=>p.t>=x0);
+  const ambS=[];for(let i=0;i<=60;i++){const t=x0+(x1-x0)*i/60;ambS.push([t,C.amb(t)])}
+  let y0=Math.min(...vis.map(p=>p.T),C.thr,...ambS.map(a=>a[1])),y1=Math.max(...vis.map(p=>p.T),C.thr);
+  y0=Math.floor((y0-1)/5)*5;y1=Math.ceil((y1+2)/5)*5;
+  const X=t=>L+(t-x0)/(x1-x0)*iw,Y=v=>T+(1-(v-y0)/(y1-y0))*ih;
+  let s='<svg viewBox="0 0 '+W+' '+Hh+'" width="'+W+'" height="'+Hh+'" role="img" aria-label="Graf poklesu teploty" font-family="IBM Plex Mono, monospace" font-size="11">';
+  s+='<rect x="'+X(Math.max(coolStart,x0))+'" y="'+T+'" width="'+Math.max(0,X(x1)-X(Math.max(coolStart,x0)))+'" height="'+ih+'" fill="'+c('--pause')+'"/>';
+  for(let v=y0;v<=y1;v+=5){s+='<line x1="'+L+'" x2="'+(L+iw)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="'+c('--line')+'"/><text x="'+(L-6)+'" y="'+(Y(v)+4)+'" text-anchor="end" fill="'+c('--muted')+'">'+v+'</text>'}
+  const span=(x1-x0)/MIN,steps=[10,15,30,60,120,180,240];let st=steps.find(m=>span/m<=iw/62)||360;
+  const d0=new Date(x0);let tt=new Date(d0.getFullYear(),d0.getMonth(),d0.getDate()).getTime();while(tt<x0)tt+=st*MIN;
+  for(;tt<=x1;tt+=st*MIN){s+='<line x1="'+X(tt)+'" x2="'+X(tt)+'" y1="'+T+'" y2="'+(T+ih)+'" stroke="'+c('--line')+'" stroke-dasharray="2 3"/><text x="'+X(tt)+'" y="'+(T+ih+18)+'" text-anchor="middle" fill="'+c('--muted')+'">'+fmt(tt)+'</text>'}
+  s+='<text x="'+(L-6)+'" y="'+(T-2)+'" text-anchor="end" fill="'+c('--muted')+'">°C</text>';
+  filtWins(x0,x1).forEach(w=>{const a=Math.max(w.a,x0),b=Math.min(w.b,x1);s+='<rect x="'+X(a)+'" y="'+T+'" width="'+Math.max(1,X(b)-X(a))+'" height="'+ih+'" fill="'+c('--water')+'" opacity=".14"><title>filtrace '+fmt(w.a)+'–'+fmt(w.b)+'</title></rect>'});
+  const ty=Y(C.thr);s+='<line x1="'+L+'" x2="'+(L+iw)+'" y1="'+ty+'" y2="'+ty+'" stroke="'+c('--bad')+'" stroke-width="1.2" stroke-dasharray="6 4"/><text x="'+(L+4)+'" y="'+(ty+14)+'" fill="'+c('--bad')+'">hranice '+nf(C.thr,C.thr%1?1:0)+' °C</text>';
+  s+='<polyline points="'+ambS.map(a=>X(a[0])+','+Y(a[1])).join(' ')+'" fill="none" stroke="'+c('--muted')+'" stroke-width="1.3" stroke-dasharray="1 3"/><text x="'+(L+iw-4)+'" y="'+(Y(ambS[ambS.length-1][1])-5)+'" text-anchor="end" fill="'+c('--muted')+'">okolí</text>';
+  if(C.fit&&C.k>0&&C.sim){const pl=C.sim(x1).filter(q=>q[1]>=y0).map(q=>X(q[0])+','+Y(Math.min(q[1],y1)));
+    s+='<polyline points="'+pl.join(' ')+'" fill="none" stroke="'+c('--water')+'" stroke-width="2" stroke-dasharray="5 4"/>'}
+  vis.forEach(p=>{s+=p.src==='man'?'<circle cx="'+X(p.t)+'" cy="'+Y(p.T)+'" r="4.5" fill="'+c('--heat')+'" stroke="'+c('--panel')+'" stroke-width="1.5"><title>'+fmt(p.t)+' '+nf(p.T)+' °C (ručně'+(p.mix?', zamícháno':'')+(p.bath?', koupání':'')+')</title></circle>':'<circle cx="'+X(p.t)+'" cy="'+Y(p.T)+'" r="2.6" fill="'+c('--water')+'"><title>'+fmt(p.t)+' '+nf(p.T)+' °C</title></circle>'});
+  const mark=(t,lbl,col,dash,dy)=>{if(t<x0||t>x1)return;s+='<line x1="'+X(t)+'" x2="'+X(t)+'" y1="'+T+'" y2="'+(T+ih)+'" stroke="'+col+'" stroke-width="1.4" '+(dash?'stroke-dasharray="3 3"':'')+'/>';
+    const right=X(t)>L+iw-110;s+='<text x="'+(X(t)+(right?-5:5))+'" y="'+(T+12+dy)+'" text-anchor="'+(right?'end':'start')+'" fill="'+col+'" font-weight="500">'+lbl+'</text>'};
+  mark(coolStart,'konec natápění '+fmt(coolStart),c('--muted'),true,0);
+  if(C.tThr)mark(C.tThr,'pod '+nf(C.thr,C.thr%1?1:0)+' °C '+fmt(C.tThr),c('--bad'),false,Math.abs(X(C.tThr)-X(coolStart))<130?16:0);
+  if(C.below)mark(C.below,'pod hranicí '+fmt(C.below),c('--bad'),false,16);
+  s+='</svg>';el.innerHTML=s;
+}
+function renderStokeSum(){$('sumStoke').textContent=''}
+
+function warnState(R){
+  if(!R||!R.ok||R.reached||!R.heat||R.heat.length<2)return null;
+  const h=R.heat,last=h[h.length-1],prev=h[h.length-2],d=last.T-prev.T;
+  if(nearFilt(prev.t,last.t)&&d<0)return{lvl:'warn',key:'filt',msg:'<b>Probíhá filtrace</b> – pokles '+nf(d)+' °C je promíchání vody, ne vyhasínání.'};
+  if(last.bath&&d<0)return{lvl:'warn',key:'bath',msg:'<b>Pokles po koupání / bez víka</b> ('+nf(d)+' °C) – očekávaný, ne vyhasínání.'};
+  if(last.mix&&d<0)return{lvl:'warn',key:'mix',msg:'<b>Pokles po zamíchání</b> ('+nf(d)+' °C) – vyrovnání vrstev vody, ne vyhasínání. Sleduj další zápis.'};
+  if(R.rateShort<-0.5||d<=-0.2)return{lvl:'bad',key:'cool',msg:'<b>Teplota klesá</b> ('+nf(R.rateShort)+' °C/h, od '+fmt(prev.t)+' '+(d>=0?'+':'')+nf(d)+' °C). Oheň pravděpodobně vyhasíná – přilož.'};
+  const stall=R.pauses&&R.pauses.ongoing;
+  if(stall||(R.rate>0&&R.rateShort<0.4*R.rate&&R.rateShort<2))return{lvl:'warn',key:'weak',msg:'<b>Slabý ohřev</b>: posledních '+Math.round((last.t-R.rateShortFrom)/MIN)+' min jen '+nf(R.rateShort)+' °C/h (trend '+nf(R.rate)+' °C/h). Zkontroluj oheň.'};
+  return null;
+}
+let lastWarnKey=null;
+function renderAlerts(R){
+  let w=warnState(R);const al=$('alert');
+  if(!w&&R&&R.reached&&R.last&&!R.last.mix)w={lvl:'warn',key:'mixcheck',msg:'<b>Na čidle je '+nf(R.last.T)+' °C.</b> Čidlo je u teplejší hladiny – zamíchej vodu a zapiš teplotu znovu se značkou „zamícháno“. Teprve to je skutečná teplota celé kádě.'};
+  if(w){al.hidden=false;al.className='alert '+w.lvl;al.innerHTML='<span>'+w.msg+'</span>';
+    const k=w.key+'@'+R.last.t;if(k!==lastWarnKey){lastWarnKey=k;if($('sound').checked)beep()}}
+  else{al.hidden=true;lastWarnKey=null}
+  const fb=$('entryFb');
+  if(!R.ok||!R.last){fb.innerHTML='<span class="small">'+(R.msg||'Zapiš teplotu.')+'</span>';return w}
+  let tag,cls,txt;
+  if(R.check){const z=R.check.z,dv=R.check.dev;
+    if(Math.abs(z)<=2){tag='Na trendu';cls='ok'}else if(z>2){tag='Nad trendem';cls='ok'}else{tag='Pod trendem';cls=R.rateShort<1?'bad':'warn'}
+    txt=(dv>=0?'+':'')+nf(dv)+' °C proti trendu (čekáno '+nf(R.check.pred)+' °C, '+nf(z,1)+'σ)';}
+  else{tag='Málo dat';cls='warn';txt='trend se vyhodnotí od 4 zápisů'}
+  if(w){cls=w.lvl;if(w.key==='cool')tag='Chladne'}
+  fb.innerHTML='<span>Poslední '+fmt(R.last.t)+' <b class="num">'+nf(R.last.T)+' °C</b></span><span class="tag '+cls+'">'+tag+'</span><span class="small">'+txt+'</span>';
+  return w;
+}
+function setTiles(R,p,dl){
+  const set=(id,cls,v,sub)=>{$(id).className='tile'+(cls?' '+cls:'');$(id+'V').textContent=v;$(id+'S').textContent=sub||''};
+  const tg=R.target||40;$('tEtaL').textContent='Natopeno '+nf(tg,tg%1?1:0)+' °C';$('tTrendL').textContent='Trend';$('tProbL').textContent='Pravděpodobnost';
+  if(!R.ok){set('tEta','','–','zapiš teplotu');set('tTrend','','–','');set('tProb','','–','');return}
+  let tc='',tt='Málo dat';const stall=R.pauses&&R.pauses.ongoing;
+  const w=warnState(R);
+  if(R.reached){tc='ok';tt='Hotovo'}
+  else if(w&&w.key==='cool'){tc='bad';tt='Chladne'}
+  else if(stall||(R.check&&R.check.z<-2&&R.rateShort<1)||R.noEta){tc='bad';tt='Stojí'}
+  else if(R.check){const z=R.check.z;tc=z>=-2?'ok':'warn';tt=Math.abs(z)<=2?'Sleduje':z>2?'Rychleji':'Zpomaluje'}
+  else if(R.prelim){tc='warn'}
+  set('tTrend',tc,tt,R.rate!=null?nf(R.rate)+' °C/h':'');
+  if(R.reached)set('tEta','ok',fmt(R.reached),'dosaženo');
+  else if(R.eta)set('tEta',R.prelim?'warn':tc,(R.prelim?'≈':'')+fmt(R.eta),R.prelim?'předběžně':'±'+Math.round(R.sigma/MIN)+' min');
+  else set('tEta','bad','–','neroste');
+  if(p==null)set('tProb',R.prelim?'warn':'','–',R.prelim?'od 4 zápisů':'');
+  else set('tProb',p>=0.8?'ok':p>=0.5?'warn':'bad',p>0.99?'>99 %':p<0.01?'<1 %':Math.round(p*100)+' %',dl?'do '+dl:'');
+}
+function renderStoke(R){
+  R=R||lastR;const now=Date.now(),card=$('stokeCard');
+  $('stokeInt').value=stoke.interval;if(document.activeElement!==$('stokeNextIn'))$('stokeNextIn').value=stoke.next?toHM(stoke.next):'';
+  if(R&&R.reached){card.classList.remove('due');$('stokeNext').textContent='Natopeno';$('stokeSub').textContent='Další přikládání jen pro udržení teploty.';$('stokePlan').textContent='';$('sumStoke').textContent='natopeno';return}
+  if(!stoke.next){card.classList.remove('due');$('stokeNext').textContent='Plán přikládání nenastaven';$('stokeSub').textContent='Zaškrtni „přiloženo“ u zápisu nebo stiskni Přiloženo teď.';$('stokePlan').textContent='';$('sumStoke').textContent='';return}
+  const diff=stoke.next-now,m=Math.round(Math.abs(diff)/MIN);
+  const stall=R&&R.pauses&&R.pauses.ongoing;
+  if(diff<=0){card.classList.add('due');$('stokeNext').textContent='Přilož teď';
+    $('stokeSub').textContent='plán '+fmt(stoke.next)+(m?' · '+m+' min po termínu':'');
+    $('sumStoke').textContent='přilož teď';
+    if($('sound').checked&&beeped!==stoke.next){beeped=stoke.next;beep()}}
+  else{card.classList.remove('due');$('stokeNext').textContent='Další přiložení '+fmt(stoke.next);$('sumStoke').textContent='přiložit '+fmt(stoke.next)+' (za '+m+' min)';
+    $('stokeSub').textContent='za '+(m<1?'méně než minutu':m+' min')+(stoke.log.length?' · naposledy '+fmt(stoke.log[stoke.log.length-1]):'');}
+  const plan=stokePlan(R),parts=[];
+  if(stall)parts.push('<b style="color:var(--bad)">Teplota stojí od '+fmt(stall.a)+'.</b> V záznamu se zastavení ohřevu opakuje (15:00–15:50). Zkontroluj oheň; pokud je slabý, přilož hned a nečekej na plán.');
+  if(R&&R.eta){parts.push('Do odhadu natopení ('+fmt(R.eta)+') ještě '+plan.length+'× přiložit'+(plan.length?': '+plan.map(fmt).join(', '):'')+'.');
+    if(R.etaCons&&R.etaCons>R.eta){const pc=[];for(let t=stoke.next;t<R.etaCons&&pc.length<24;t+=stoke.interval*MIN)pc.push(t);
+      parts.push('Konzervativně (do '+fmt(R.etaCons)+') '+pc.length+'×.')}
+    const lastP=plan[plan.length-1];if(lastP&&R.eta-lastP<15*MIN)parts.push('<i>Názor, neověřeno: přiložení v '+fmt(lastP)+' je méně než 15 min před odhadem. Zbytkový žár může na dotopení stačit; rozhodni podle stavu ohně.</i>');}
+  $('stokePlan').innerHTML=parts.join(' ');
+}
+function addStoke(t){stoke.log.push(t);stoke.log.sort((a,b)=>a-b);const lastS=stoke.log[stoke.log.length-1];stoke.next=lastS+stoke.interval*MIN;saveStoke()}
+$('stokeNow').onclick=()=>{addStoke(Date.now());render()};
+$('stokeInt').addEventListener('change',()=>{const v=parseInt($('stokeInt').value,10);if(!(v>0))return;stoke.interval=v;
+  if(stoke.log.length)stoke.next=stoke.log[stoke.log.length-1]+v*MIN;saveStoke();render()});
+$('stokeNextIn').addEventListener('change',()=>{const hm=$('stokeNextIn').value;if(!hm)return;const [h,m]=hm.split(':').map(Number);const r=new Date();
+  let t=new Date(r.getFullYear(),r.getMonth(),r.getDate(),h,m).getTime();if(t<Date.now()-12*H)t+=24*H;stoke.next=t;saveStoke();render()});
+$('sound').addEventListener('change',()=>{if($('sound').checked){try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume();beep()}catch(e){}}});
+setInterval(()=>renderStoke(),15000);
+
+function renderFilt(){const tb=$('filtList');tb.innerHTML='';const fs=filt.slice().sort((a,b)=>a.h*60+a.m-(b.h*60+b.m));
+  $('sumFilt').textContent=fs.map(w=>String(w.h).padStart(2,'0')+':'+String(w.m).padStart(2,'0')).join(', ');
+  if(document.activeElement!==$('fiFactor'))$('fiFactor').value=filtF;
+  if(!fs.length){tb.innerHTML='<tr><td colspan="3" class="small">Žádná filtrace.</td></tr>';return}
+  fs.forEach(w=>{const tr=document.createElement('tr');tr.innerHTML='<td class="num">'+String(w.h).padStart(2,'0')+':'+String(w.m).padStart(2,'0')+'</td><td class="num">'+w.d+' min</td><td style="text-align:right"><button type="button">Smazat</button></td>';
+    tr.querySelector('button').onclick=()=>{filt=filt.filter(x=>x!==w);save();render()};tb.appendChild(tr)})}
+function renderManual(){
+  const tb=$('manList');tb.innerHTML='';
+  const rows=manual.map(p=>({t:p.t,p,st:stoke.log.some(x=>Math.abs(x-p.t)<60000)}));
+  stoke.log.forEach(x=>{if(!manual.some(p=>Math.abs(x-p.t)<60000))rows.push({t:x,p:null,st:true})});
+  rows.sort((a,b)=>b.t-a.t);
+  $('sumLog').textContent=manual.length+' teplot · '+stoke.log.length+'× přiloženo';
+  if(!rows.length){tb.innerHTML='<tr><td colspan="5" class="small">Zatím žádný ruční zápis.</td></tr>';return}
+  rows.forEach(r=>{const tr=document.createElement('tr');
+    tr.innerHTML='<td class="num">'+fmt(r.t)+'</td><td class="num">'+(r.p?nf(r.p.T)+' °C':'–')+'</td><td class="num">'+(r.p&&isFinite(r.p.amb)?nf(r.p.amb)+' °C'+(r.p.ambSrc==='man'?' ✎':''):'–')+'</td><td class="flags">'+(r.st?'<span style="color:var(--ok);font-weight:600">přiloženo</span> ':'')+(r.p?'<button type="button" class="flag" data-f="mix" aria-pressed="'+!!r.p.mix+'">zamícháno</button><button type="button" class="flag" data-f="bath" aria-pressed="'+!!r.p.bath+'">koupání</button>':'')+'</td><td style="text-align:right"><button type="button">Smazat</button></td>';
+    tr.querySelectorAll('.flag').forEach(b=>b.onclick=()=>{r.p[b.dataset.f]=!r.p[b.dataset.f];save();render()});
+    tr.querySelector('td:last-child button').onclick=()=>{if(r.p)manual=manual.filter(q=>q!==r.p);
+      if(r.st){stoke.log=stoke.log.filter(x=>Math.abs(x-r.t)>=60000);saveStoke()}save();render()};
+    tb.appendChild(tr)});
+}
+
+function draw(pts,R){
+  lastR=R;renderStoke(R);
+  const el=$('chart');const W=Math.max(300,el.clientWidth||600),Hh=Math.round(Math.max(260,Math.min(420,W*0.55)));
+  const css=getComputedStyle(document.documentElement);const c=k=>css.getPropertyValue(k).trim();
+  if(!pts.length){el.innerHTML='';return}
+  const L=44,Rr=14,T=14,B=30,iw=W-L-Rr,ih=Hh-T-B;
+  let x0=view==='heat'&&R.start?R.start.t-20*MIN:pts[0].t;
+  let x1=pts[pts.length-1].t;
+  if(R.eta)x1=Math.max(x1,R.eta+2*(R.sigma||0)+(R.sigma?0:15*MIN));
+  if(R.etaCons&&R.etaCons<x1+3*H)x1=Math.max(x1,R.etaCons);
+  x1+=10*MIN;
+  const vis=pts.filter(p=>p.t>=x0);
+  let y0=Math.min(...vis.map(p=>p.T)),y1=Math.max(...vis.map(p=>p.T),R.target||40);
+  y0=Math.floor((y0-1)/5)*5;y1=Math.ceil((y1+2)/5)*5;
+  const X=t=>L+(t-x0)/(x1-x0)*iw,Y=v=>T+(1-(v-y0)/(y1-y0))*ih;
+  let s='<svg viewBox="0 0 '+W+' '+Hh+'" width="'+W+'" height="'+Hh+'" role="img" aria-label="Graf teploty a predikce" font-family="IBM Plex Mono, monospace" font-size="11">';
+  // pauses
+  if(R.pauses)[...R.pauses.done,...(R.pauses.ongoing?[R.pauses.ongoing]:[])].forEach(p=>{if(p.b<x0)return;s+='<rect x="'+X(Math.max(p.a,x0))+'" y="'+T+'" width="'+Math.max(2,X(p.b)-X(Math.max(p.a,x0)))+'" height="'+ih+'" fill="'+c('--pause')+'"/>'});
+  // grid y
+  for(let v=y0;v<=y1;v+=5){s+='<line x1="'+L+'" x2="'+(L+iw)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="'+c('--line')+'"/><text x="'+(L-6)+'" y="'+(Y(v)+4)+'" text-anchor="end" fill="'+c('--muted')+'">'+v+'</text>'}
+  // grid x
+  const span=(x1-x0)/MIN,steps=[10,15,30,60,120,180,240];let st=steps.find(m=>span/m<=iw/62)||360;
+  const d0=new Date(x0);let tt=new Date(d0.getFullYear(),d0.getMonth(),d0.getDate()).getTime();while(tt<x0)tt+=st*MIN;
+  for(;tt<=x1;tt+=st*MIN){s+='<line x1="'+X(tt)+'" x2="'+X(tt)+'" y1="'+T+'" y2="'+(T+ih)+'" stroke="'+c('--line')+'" stroke-dasharray="2 3"/><text x="'+X(tt)+'" y="'+(T+ih+18)+'" text-anchor="middle" fill="'+c('--muted')+'">'+fmt(tt)+'</text>'}
+  s+='<text x="'+(L-6)+'" y="'+(T-2)+'" text-anchor="end" fill="'+c('--muted')+'">°C</text>';
+  // target
+  if(R.target){const ty=Y(R.target);s+='<line x1="'+L+'" x2="'+(L+iw)+'" y1="'+ty+'" y2="'+ty+'" stroke="'+c('--bad')+'" stroke-width="1.2" stroke-dasharray="6 4"/><text x="'+(L+4)+'" y="'+(ty-5)+'" fill="'+c('--bad')+'">cíl '+nf(R.target,R.target%1?1:0)+' °C</text>'}
+  // fit + band
+  if(R.fit&&R.fit.b>0){const f=R.fit,tl=R.last.t,xe=x1;const xh=t=>(t-tl)/H;
+    const N=30;let up=[],dn=[];for(let i=0;i<=N;i++){const t=tl+(xe-tl)*i/N,x=xh(t),p=f.pred(x),e=1.96*f.se(x);up.push(X(t)+','+Y(Math.min(p+e,y1)));dn.unshift(X(t)+','+Y(Math.max(p-e,y0)))}
+    s+='<polygon points="'+up.concat(dn).join(' ')+'" fill="'+c('--band')+'"/>';
+    const ws=R.win[0].t;
+    s+='<line x1="'+X(ws)+'" y1="'+Y(f.pred(xh(ws)))+'" x2="'+X(tl)+'" y2="'+Y(f.pred(0))+'" stroke="'+c('--heat')+'" stroke-width="2"/>';
+    const yEnd=Math.min(f.pred(xh(xe)),y1),tEnd=f.b>0&&f.pred(xh(xe))>y1?tl+(y1-f.a)/f.b*H:xe;
+    s+='<line x1="'+X(tl)+'" y1="'+Y(f.pred(0))+'" x2="'+X(tEnd)+'" y2="'+Y(Math.min(yEnd,y1))+'" stroke="'+c('--heat')+'" stroke-width="2" stroke-dasharray="5 4"/>';}
+  // points
+  vis.forEach(p=>{s+=p.src==='man'?'<circle cx="'+X(p.t)+'" cy="'+Y(p.T)+'" r="4.5" fill="'+c('--heat')+'" stroke="'+c('--panel')+'" stroke-width="1.5"><title>'+fmt(p.t)+' '+nf(p.T)+' °C (ručně)</title></circle>':'<circle cx="'+X(p.t)+'" cy="'+Y(p.T)+'" r="2.6" fill="'+c('--water')+'"><title>'+fmt(p.t)+' '+nf(p.T)+' °C</title></circle>'});
+  // eta markers
+  const mark=(t,lbl,col,dash,dy)=>{if(t<x0||t>x1)return;s+='<line x1="'+X(t)+'" x2="'+X(t)+'" y1="'+T+'" y2="'+(T+ih)+'" stroke="'+col+'" stroke-width="1.4" '+(dash?'stroke-dasharray="3 3"':'')+'/>';
+    const right=X(t)>L+iw-90;s+='<text x="'+(X(t)+(right?-5:5))+'" y="'+(T+12+dy)+'" text-anchor="'+(right?'end':'start')+'" fill="'+col+'" font-weight="500">'+lbl+'</text>'};
+  if(R.eta)mark(R.eta,'odhad '+fmt(R.eta),c('--heat'),false,0);
+  if(R.etaCons)mark(R.etaCons,'konzerv. '+fmt(R.etaCons),c('--muted'),true,R.eta&&Math.abs(X(R.etaCons)-X(R.eta))<110?16:0);
+  if(R.reached)mark(R.reached,'natopeno '+fmt(R.reached),c('--ok'),false,0);
+  filtWins(x0,x1).forEach(w=>{const a=Math.max(w.a,x0),b=Math.min(w.b,x1);s+='<rect x="'+X(a)+'" y="'+T+'" width="'+Math.max(1,X(b)-X(a))+'" height="'+ih+'" fill="'+c('--water')+'" opacity=".14"><title>filtrace '+fmt(w.a)+'–'+fmt(w.b)+'</title></rect>'});
+  // stoking marks: logged (solid) and planned (dashed)
+  const sy=T+ih;
+  stoke.log.forEach(t=>{if(t<x0||t>x1)return;s+='<line x1="'+X(t)+'" x2="'+X(t)+'" y1="'+(sy-14)+'" y2="'+sy+'" stroke="'+c('--ok')+'" stroke-width="3"><title>přiloženo '+fmt(t)+'</title></line>'});
+  stokePlan(R).forEach(t=>{if(t<x0||t>x1)return;s+='<line x1="'+X(t)+'" x2="'+X(t)+'" y1="'+(sy-14)+'" y2="'+sy+'" stroke="'+c('--ok')+'" stroke-width="2" stroke-dasharray="2 2"><title>přiložit '+fmt(t)+'</title></line>'});
+  s+='</svg>';el.innerHTML=s;
+}
+
+/* events */
+$('winSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;winMin=+b.dataset.w;[...$('winSeg').children].forEach(x=>x.setAttribute('aria-pressed',x===b));render()});
+$('viewSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;view=b.dataset.v;[...$('viewSeg').children].forEach(x=>x.setAttribute('aria-pressed',x===b));render()});
+[...$('winSeg').children].forEach(x=>{if(!x.hasAttribute('aria-pressed'))x.setAttribute('aria-pressed','false')});
+[...$('viewSeg').children].forEach(x=>{if(!x.hasAttribute('aria-pressed'))x.setAttribute('aria-pressed','false')});
+$('target').addEventListener('input',()=>{deadlineTouched=false;render()});
+$('deadline').addEventListener('input',()=>{deadlineTouched=true;render()});
+$('manForm').addEventListener('submit',e=>{e.preventDefault();const T=parseFloat(String($('manTemp').value).replace(',','.'));const hm=$('manTime').value;if(!hm||!isFinite(T))return;
+  const p=manualFromHM(hm,T);const am=parseFloat(String($('manAmb').value).replace(',','.'));
+  if(isFinite(am)){p.amb=am;p.ambSrc='man'}else{const fa=forecastAt(p.t);if(inForecast(p.t)){p.amb=Math.round(fa*10)/10;p.ambSrc='pred'}}$('manAmb').value='';
+  if($('manBath').checked){p.bath=true;$('manBath').checked=false}
+  if($('manMix').checked){p.mix=true;$('manMix').checked=false}manual.push(p);if($('manStoke').checked){addStoke(p.t);$('manStoke').checked=false}
+  save();$('manTemp').value='';setTimeout(()=>{const fb=$('entryFb');fb.classList.remove('flash');void fb.offsetWidth;fb.classList.add('flash')},0);deadlineTouched=false;render();$('manTemp').focus()});
+$('filtForm').addEventListener('submit',e=>{e.preventDefault();const hm=$('fiStart').value,d=parseInt($('fiDur').value,10);if(!hm||!(d>0))return;const [h,m]=hm.split(':').map(Number);filt.push({h,m,d});save();$('fiStart').value='';render()});
+$('fiFactor').addEventListener('change',()=>{const v=parseFloat(String($('fiFactor').value).replace(',','.'));if(v>=1){filtF=v;save();render()}});
+$('clearMan').onclick=()=>{manual=[];stoke.log=[];saveStoke();save();render()};
+$('sample').onclick=()=>{csvText=SAMPLE;csvName='záznam 25. 10. 2026';manual=SAMPLE_MANUAL.map(x=>manualFromHM(x.h+':'+x.m,x.T));save();deadlineTouched=false;render()};
+function readFile(f){const r=new FileReader();r.onload=()=>{const txt=String(r.result);const p=parseCSV(txt,Date.now());
+  if(p.length<2){$('importInfo').textContent='Soubor '+f.name+' neobsahuje rozpoznatelná data čas/teplota.';return}
+  csvText=txt;csvName=f.name;save();deadlineTouched=false;render()};r.readAsText(f)}
+$('file').addEventListener('change',e=>{if(e.target.files[0])readFile(e.target.files[0]);e.target.value=''});
+const dz=$('drop');['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over')}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over')}));
+dz.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)readFile(f)});
+let rt;window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(render,120)});
+if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',render);
+new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+const now=new Date();$('manTime').value=toHM(now.getTime());
+$('endOpen').onclick=()=>{$('endPanel').hidden=false;$('resetPanel').hidden=true;$('enTime').value=toHM(Date.now());
+  const {pts}=mergePts(basePts(),manual);$('enTa').value=coolTa??'';$('enTa').placeholder='auto '+nf(forecastAt(Date.now()));$('enThr').value=coolThr};
+$('endCancel').onclick=()=>{$('endPanel').hidden=true};
+$('endForm').addEventListener('submit',e=>{e.preventDefault();const hm=$('enTime').value;const ta=parseFloat(String($('enTa').value).replace(',','.')),th=parseFloat(String($('enThr').value).replace(',','.'));
+  if(!hm||!isFinite(th))return;const [h,m]=hm.split(':').map(Number);const n=new Date();let t=new Date(n.getFullYear(),n.getMonth(),n.getDate(),h,m).getTime();if(t>Date.now()+H)t-=24*H;
+  mode='cool';coolStart=t;coolTa=isFinite(ta)?ta:null;coolThr=th;stoke.next=null;saveStoke();save();$('endPanel').hidden=true;$('manTemp').focus();render()});
+const coolIn=()=>{const ta=parseFloat(String($('coTa').value).replace(',','.')),th=parseFloat(String($('coThr').value).replace(',','.'));coolTa=isFinite(ta)?ta:null;if(isFinite(th))coolThr=th;
+  const hm=$('coStart').value;if(hm&&coolStart){const [h,m]=hm.split(':').map(Number);const d=new Date(coolStart);coolStart=new Date(d.getFullYear(),d.getMonth(),d.getDate(),h,m).getTime()}save();render()};
+['coTa','coThr','coStart'].forEach(id=>$(id).addEventListener('change',coolIn));
+$('resetOpen').onclick=()=>{$('endPanel').hidden=true;$('resetPanel').hidden=false;$('rsTime').value=toHM(Date.now());$('rsTemp').focus()};
+$('resetCancel').onclick=()=>{$('resetPanel').hidden=true};
+$('resetForm').addEventListener('submit',e=>{e.preventDefault();const T=parseFloat(String($('rsTemp').value).replace(',','.'));const hm=$('rsTime').value;if(!hm)return;mode='heat';coolStart=null;
+  csvText='';csvName='';const [h,m]=hm.split(':').map(Number);const n=new Date();let t=new Date(n.getFullYear(),n.getMonth(),n.getDate(),h,m).getTime();if(t>Date.now()+H)t-=24*H;
+  manual=isFinite(T)?[{t,T,src:'man'}]:[];if(!isFinite(T))$('secImport').open=true;stoke={interval:stoke.interval||30,next:null,log:[]};if($('rsStoke').checked)addStoke(t);else saveStoke();
+  save();deadlineTouched=false;$('resetPanel').hidden=true;$('rsTemp').value='';$('manTime').value=toHM(Date.now());$('manTemp').focus();render()});
+document.querySelectorAll('details[id]').forEach(d=>{const o=store.get('kad_open2')||{};if(d.id in o)d.open=o[d.id];
+  d.addEventListener('toggle',()=>{const o2=store.get('kad_open2')||{};o2[d.id]=d.open;store.set('kad_open2',o2);if(d.id==='secChart'&&d.open)render()})});
+setInterval(()=>{if(document.activeElement!==$('manTime'))$('manTime').value=toHM(Date.now())},30000);
+/* ===== Sdílené úložiště (db) – synchronizace mezi zařízeními ===== */
+const LOCAL0=store.get('kad_state'),LOCALS0=store.get('kad_stoke');
+let dbDoc=null,dbReady=false,saveTimer=null,writing=Promise.resolve(),lastLocal=0;
+const setSync=(cls,txt)=>{const el=$('sync');el.className='sync '+cls;el.textContent=txt};
+function stateObj(){return JSON.parse(JSON.stringify({csvText,csvName,manual,mode,coolStart,coolTa,coolThr,filt,filtF,stoke,updated:Date.now(),seed:false}))}
+function applyState(d0){const d=JSON.parse(JSON.stringify(d0));
+  csvText=d.csvText??'';csvName=d.csvName||'';manual=Array.isArray(d.manual)?d.manual:[];mode=d.mode||'heat';coolStart=d.coolStart??null;coolTa=d.coolTa??null;coolThr=d.coolThr??37;
+  if(Array.isArray(d.filt))filt=d.filt;if(d.filtF)filtF=d.filtF;
+  if(d.stoke&&Array.isArray(d.stoke.log))stoke={interval:d.stoke.interval||30,next:d.stoke.next??null,log:d.stoke.log};
+  store.set('kad_state',{csvText,csvName,manual,mode,coolStart,coolTa,coolThr,filt,filtF});store.set('kad_stoke',stoke)}
+function scheduleDb(){lastLocal=Date.now();if(!dbDoc||!dbReady)return;clearTimeout(saveTimer);setSync('','ukládám…');saveTimer=setTimeout(writeDb,600)}
+function writeDb(){const o=stateObj();writing=writing.then(()=>dbDoc.set(o)).then(()=>setSync('ok','uloženo · synchronizováno')).catch(e=>{
+  setSync('err',e&&e.code==='quota_exceeded'?'úložiště plné – uloženo jen v prohlížeči':'nepodařilo se uložit – uloženo jen v prohlížeči')})}
+function mergeLocal(d){/* sloučí data z prohlížeče (vzniklá před synchronizací) s uloženými */
+  const out=JSON.parse(JSON.stringify(d));const lm=(LOCAL0&&LOCAL0.manual)||[];const map=new Map();
+  (out.manual||[]).forEach(p=>map.set(Math.round(p.t/1000),p));
+  lm.forEach(p=>{const k=Math.round(p.t/1000),q=map.get(k);if(!q)map.set(k,p);else{q.mix=q.mix||p.mix;q.bath=q.bath||p.bath;if(p.ambSrc==='man'){q.amb=p.amb;q.ambSrc='man'}}});
+  out.manual=[...map.values()].sort((a,b)=>a.t-b.t);
+  const sl=((LOCALS0&&LOCALS0.log)||[]).concat((out.stoke&&out.stoke.log)||[]).sort((a,b)=>a-b).filter((x,i,a)=>!i||x-a[i-1]>=60000);
+  out.stoke=Object.assign({interval:30,next:null},out.stoke||{},{log:sl});
+  if(out.seed&&LOCAL0){['csvText','csvName','mode','coolStart','coolTa','coolThr','filt','filtF'].forEach(k=>{if(LOCAL0[k]!==undefined)out[k]=LOCAL0[k]});
+    if(LOCALS0&&LOCALS0.next!=null)out.stoke.next=LOCALS0.next;if(LOCALS0&&LOCALS0.interval)out.stoke.interval=LOCALS0.interval}
+  return out}
+async function initDb(){
+  const db=window.claude&&window.claude.use?await window.claude.use('db'):null;
+  if(!db){setSync('','ukládá se jen v tomto prohlížeči');return}
+  dbDoc=db.doc('kad/state');let first=true;
+  dbDoc.onSnapshot(snap=>{
+    if(snap.metadata.hasPendingWrites)return;
+    if(first){first=false;dbReady=true;
+      if(!snap.exists){if(LOCAL0)writeDb();else setSync('ok','synchronizováno');render();return}
+      const d=snap.data();let migrated=false;try{migrated=localStorage.getItem('kad_migrated')==='1'}catch(e){}
+      if(LOCAL0&&!migrated){applyState(mergeLocal(d));try{localStorage.setItem('kad_migrated','1')}catch(e){}writeDb()}
+      else{applyState(d);setSync('ok','synchronizováno')}
+      deadlineTouched=false;render();return}
+    if(!snap.exists)return;const d=snap.data();if((d.updated||0)<lastLocal)return;
+    applyState(d);setSync('ok','synchronizováno');render()},
+  e=>setSync('err','synchronizace přerušena – obnov stránku'));
+}
+load();loadStoke();render();initDb();
+</script>
