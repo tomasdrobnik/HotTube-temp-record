@@ -133,7 +133,9 @@
         <label>Vlastní +<input id="aheadVal" class="w5" inputmode="decimal" placeholder="x" autocomplete="off"></label>
         <label>jednotka<select id="aheadUnit"><option value="h">h</option><option value="d">d</option></select></label>
       </div>
-      <fieldset class="shows"><legend>Viditelnost</legend>
+      <details class="shows" id="showMenu">
+        <summary>Viditelnost <span id="showCount" class="small"></span></summary>
+        <div class="showbox">      
         <label class="chk"><input type="checkbox" data-show="sensor"> čidlo</label>
         <label class="chk"><input type="checkbox" data-show="manual"> zápisy</label>
         <label class="chk"><input type="checkbox" data-show="model"> trend / predikce</label>
@@ -141,7 +143,8 @@
         <label class="chk"><input type="checkbox" data-show="zones"> pauzy / zóna</label>
         <label class="chk"><input type="checkbox" data-show="amb"> okolí</label>
         <label class="chk"><input type="checkbox" data-show="ref"> cíl / hranice</label>
-      </fieldset>
+      </div>
+      </details>
     </div>
     <div id="chart" role="img" aria-label="Graf teploty"></div>
     <div class="legend" id="legend"></div>

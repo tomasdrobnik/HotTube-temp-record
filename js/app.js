@@ -239,6 +239,8 @@ function syncChartCtl() {
   }
   document.querySelectorAll('[data-range]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === String(ui.range))));
   document.querySelectorAll('[data-show]').forEach(cb => { cb.checked = ui.show[cb.dataset.show] !== false; });
+  const all = document.querySelectorAll('[data-show]'), on = [...all].filter(c => c.checked).length;
+  $('showCount').textContent = on === all.length ? '· vše' : `· ${on}/${all.length}`;
 }
 
 /* ===== seznamy ===== */
@@ -437,7 +439,9 @@ function bind() {
   document.querySelectorAll('[data-ahead]').forEach(b => b.addEventListener('click', () => { ui.ahead = +b.dataset.ahead; saveUi(); syncChartCtl(); renderChart(); }));
   const customAhead = () => { const v = pn($('aheadVal').value); ui.ahead = isFinite(v) && v > 0 ? Math.min(v * ($('aheadUnit').value === 'd' ? 24 : 1), 14 * 24) : 0; saveUi(); renderChart(); document.querySelectorAll('[data-ahead]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.ahead === ui.ahead))); };
   $('aheadVal').addEventListener('input', customAhead); $('aheadUnit').addEventListener('change', customAhead);
-  document.querySelectorAll('[data-show]').forEach(cb => cb.addEventListener('change', () => { ui.show = { ...ui.show, [cb.dataset.show]: cb.checked }; saveUi(); renderChart(); }));
+  document.querySelectorAll('[data-show]').forEach(cb => cb.addEventListener('change', () => { ui.show = { ...ui.show, [cb.dataset.show]: cb.checked }; saveUi(); syncChartCtl(); renderChart(); }));
+  document.addEventListener('click', e => { const m = $('showMenu'); if (m.open && !m.contains(e.target)) m.open = false; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('showMenu').open = false; });
   syncChartCtl();
   // téma grafu
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderChart);
