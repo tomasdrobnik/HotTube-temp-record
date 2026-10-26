@@ -285,6 +285,7 @@ export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFa
   Rc.rateNow = -Rc.k * (last.T - amb(last.t)); Rc.in1h = sim(Rc.k, last.t, last.T, last.t + H).T;
   if (!Rc.below) {
     const r = sim(Rc.k, last.t, last.T, last.t + 48 * H, thr);
+    if (!r.hit) Rc.in48h = r.T; // do 48 h hranice nehrozí
     if (r.hit) {
       Rc.tThr = r.t;
       if (f.se) {

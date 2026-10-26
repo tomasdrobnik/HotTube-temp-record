@@ -155,6 +155,7 @@ function renderCool(d) {
     const now = C.last.t;
     if (C.below) setTile('tEta', 'bad', tl, fmt(C.below), 'už pod hranicí');
     else if (C.tThr) { const left = (C.tThr - now) / MIN; setTile('tEta', left > 60 ? 'ok' : left > 15 ? 'warn' : 'bad', tl, fmt(C.tThr), C.sigma ? '± ' + Math.round(C.sigma / MIN) + ' min' : 'za ' + Math.round(left) + ' min · předběžně'); }
+    else if (C.in48h != null) setTile('tEta', 'ok', tl, '> 48 h', `za 48 h ${nf(C.in48h)} °C`);
     else setTile('tEta', 'ok', tl, '–', C.rising ? 'zatím neklesá' : C.mixAt && !C.fit ? 'po zamíchání' : 'hranice pod okolím');
     const r = C.rateNow != null ? -C.rateNow : -C.rateShort;
     const st = C.lastInFilt ? 'Filtrace' : C.rising ? 'Dohřívá z ohniště' : C.lastIsBath ? 'Po koupání' : C.lastIsMix ? 'Po zamíchání' : chk ? chk[0] : C.fit && !C.check ? 'Málo bodů' : '';

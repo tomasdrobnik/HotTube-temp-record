@@ -42,7 +42,7 @@ export function migrate(raw) {
     if (m.amb != null) { o.amb = m.amb; o.ambSrc = m.ambSrc || 'man'; }
     return o;
   });
-  s.session = { mode: raw.mode === 'cool' ? 'cool' : 'heat', target: raw.target ?? 40, coolStart: raw.coolStart ?? null, coolThr: raw.coolThr ?? 37, coolTa: raw.coolTa ?? null };
+  s.session = { mode: raw.mode === 'cool' ? 'cool' : 'heat', target: raw.target ?? 40, coolStart: raw.coolStart ?? null, coolThr: raw.coolThr ?? 4, coolTa: raw.coolTa ?? null };
   if (raw.stoke) s.stoke = { interval: raw.stoke.interval || 30, next: raw.stoke.next ?? null, log: [...(raw.stoke.log || [])] };
   if (Array.isArray(raw.filt)) s.filt.windows = raw.filt.map(w => ({ h: w.h, m: w.m, d: w.d }));
   if (raw.filtF) s.filt.factor = raw.filtF;
