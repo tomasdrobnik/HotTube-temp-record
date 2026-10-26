@@ -25,7 +25,7 @@ Statická stránka (GitHub Pages) pro záznam natápění a chladnutí kádě; d
 ## Příkazy
 ```bash
 # testy
-node --test test/
+node --test test/*.test.js
 
 # lokální náhled (GitHub API funguje i z localhostu)
 python3 -m http.server 8080
@@ -49,7 +49,7 @@ data/state.json  fixtures/*.csv  test/*.test.js  prototype/  SPEC.md
 - Debounce zápisů 1,5 s; polling 60 s jen když `document.visibilityState === 'visible'`.
 
 ## Definice hotového úkolu
-- [ ] `node --test test/` prochází (včetně referenčních výsledků SPEC 6.5)
+- [ ] `node --test test/*.test.js` prochází (včetně referenčních výsledků SPEC 6.5)
 - [ ] Stránka funguje na šířce 375 px bez horizontálního scrollu, light i dark
 - [ ] Žádné chyby v konzoli; žádný token v kódu / logu / commitu
 - [ ] Pokud se měnila data/schéma: migrace + test
