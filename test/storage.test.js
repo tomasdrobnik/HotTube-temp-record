@@ -5,7 +5,7 @@ import { Store, migrate, mergeStates, defaultState, toB64, fromB64, TOKEN_KEY, C
 import { parseAllCSV } from '../js/analysis.js';
 
 const kvOf = () => { const m = new Map(); return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), _m: m }; };
-const proto = () => JSON.parse(fs.readFileSync(new URL('../data/state.json', import.meta.url), 'utf8'));
+const proto = () => JSON.parse(fs.readFileSync(new URL('../fixtures/state-prototype.json', import.meta.url), 'utf8'));
 
 /** Falešný GitHub Contents API: jeden soubor, sha se mění s každým PUT, špatné sha → 409. */
 function fakeGithub(initial) {
@@ -35,7 +35,7 @@ function fakeGithub(initial) {
 }
 const mk = (g, device, kv = kvOf(), withToken = true) => { if (withToken) kv.setItem(TOKEN_KEY, 'ghp_TESTTOKEN'); return new Store({ fetch: g.fetch, kv, device, debounceMs: 0, now: () => 1792990000000 }); };
 
-test('migrace prototypového formátu (data/state.json ze startovního balíku)', () => {
+test('migrace prototypového formátu (fixtures/state-prototype.json = state.json ze startovního balíku)', () => {
   const s = migrate(proto());
   assert.equal(s.schema, SCHEMA);
   assert.equal(s.csv.length, 1); assert.match(s.csv[0].text, /^Time\tTemperature/);
