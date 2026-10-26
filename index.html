@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.github.com https://api.open-meteo.com; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<title>HotTube temp record</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%232f6f9f'/%3E%3Cpath d='M16 7c3 4 5 6 5 9a5 5 0 0 1-10 0c0-3 2-5 5-9z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="top">
+    <h1>HotTube temp record</h1>
+    <span id="sync" class="sync" role="status" aria-live="polite">načítám…</span>
+  </div>
+  <div class="top">
+    <span id="modeChip" class="chip">Natápění</span>
+    <div class="actions">
+      <button id="endOpen" type="button">Ukončit natápění</button>
+      <button id="newOpen" type="button">Nový ohřev</button>
+    </div>
+  </div>
+
+  <form id="endPanel" class="confirm" hidden>
+    <strong>Ukončit natápění</strong>
+    <div class="row">
+      <label>Čas konce<input id="endTime" type="time" required></label>
+      <label>Hranice poklesu °C<input id="endThr" class="w5" inputmode="decimal" autocomplete="off"></label>
+      <label>Okolí °C (volitelné)<input id="endTa" class="w5" inputmode="decimal" autocomplete="off" placeholder="auto"></label>
+    </div>
+    <span class="small">Od konce natápění se sleduje chladnutí. Přikládání se skryje. Zpět vede jen přes „Nový ohřev“.</span>
+    <div class="row"><button class="primary" type="submit">Ukončit natápění</button><button id="endCancel" type="button">Zrušit</button></div>
+  </form>
+
+  <form id="newPanel" class="confirm" hidden>
+    <strong>Nový ohřev</strong>
+    <span class="small">Aktuální data (import, zápisy, přikládání) se uloží do archivu a stránka se vyčistí. Nic se nemaže natrvalo.</span>
+    <div class="row">
+      <label>Čas startu<input id="newTime" type="time" required></label>
+      <label>Počáteční °C (volitelné)<input id="newT" class="w5" inputmode="decimal" autocomplete="off"></label>
+      <label class="chk"><input id="newStoke" type="checkbox"> přiloženo při startu</label>
+    </div>
+    <div class="row"><button class="danger" type="submit">Archivovat a začít nový ohřev</button><button id="newCancel" type="button">Zrušit</button></div>
+  </form>
+</header>
+
+<div id="alert" class="alert" role="alert" aria-live="assertive" hidden></div>
+
+<section aria-label="Přehled">
+  <div class="tiles" aria-live="polite">
+    <div class="tile" id="tEta"><span class="l" id="tEtaL">Natopeno 40 °C</span><span class="v" id="tEtaV">–</span><span class="s" id="tEtaS"></span></div>
+    <div class="tile" id="tTrend"><span class="l" id="tTrendL">Trend</span><span class="v" id="tTrendV">–</span><span class="s" id="tTrendS"></span></div>
+    <div class="tile" id="tProb"><span class="l" id="tProbL">Pravděpodobnost</span><span class="v" id="tProbV">–</span><span class="s" id="tProbS"></span></div>
+  </div>
+</section>
+
+<details class="sec" id="secDetail" data-key="detail">
+  <summary><h2>Podrobnosti</h2><span class="sum" id="sumDetail"></span></summary>
+  <div class="body">
+    <div class="row" id="heatCtl">
+      <label>Cíl °C<input id="target" class="w5" inputmode="decimal" autocomplete="off" value="40"></label>
+      <label>Okno trendu
+        <span class="seg" role="group" aria-label="Okno trendu">
+          <button type="button" data-win="30" aria-pressed="false">30</button><button type="button" data-win="60" aria-pressed="true">60</button><button type="button" data-win="90" aria-pressed="false">90</button><button type="button" data-win="0" aria-pressed="false">od startu</button>
+        </span>
+      </label>
+      <label>Natopeno do<input id="deadline" type="time"></label>
+    </div>
+    <div class="row" id="coolCtl" hidden>
+      <label>Hranice °C<input id="coThr" class="w5" inputmode="decimal" autocomplete="off"></label>
+      <label>Okolí °C (prázdné = předpověď)<input id="coTa" class="w5" inputmode="decimal" autocomplete="off" placeholder="auto"></label>
+      <label>Konec natápění<input id="coStart" type="time"></label>
+    </div>
+    <div id="notes" class="notes small"></div>
+  </div>
+</details>
+
+<details class="sec" id="secEntry" data-key="entry" open>
+  <summary><h2>Aktuální zápis</h2><span class="sum" id="sumEntry"></span></summary>
+  <div class="body">
+    <form id="entryForm" class="row" autocomplete="off">
+      <label>Čas<input id="manTime" type="time" required></label>
+      <label>Teplota °C<input id="manT" class="w5" inputmode="decimal" placeholder="37,9" required></label>
+      <label>Okolí °C<input id="manAmb" class="w5" inputmode="decimal" placeholder="auto"></label>
+      <button class="primary" type="submit">Zapsat</button>
+    </form>
+    <div class="row">
+      <label class="chk" id="manStokeL"><input id="manStoke" type="checkbox"> přiloženo</label>
+      <label class="chk"><input id="manMix" type="checkbox"> zamícháno</label>
+      <label class="chk"><input id="manBath" type="checkbox"> koupání</label>
+    </div>
+    <div id="entryErr" class="msg bad" role="alert" hidden></div>
+    <div id="entryFb" class="fb" aria-live="polite"></div>
+  </div>
+</details>
+
+<details class="sec" id="secStoke" data-key="stoke" open>
+  <summary><h2>Přikládání</h2><span class="sum" id="sumStoke"></span></summary>
+  <div class="body">
+    <div class="stoke" id="stokeCard">
+      <div class="big" id="stokeNext">–</div>
+      <div class="small" id="stokeSub"></div>
+      <div class="small" id="stokePlan"></div>
+    </div>
+    <div class="row">
+      <button id="stokeNow" class="primary" type="button">Přiloženo teď</button>
+      <label>Interval min<input id="stokeInt" class="w5" type="number" inputmode="numeric" min="5" max="180" step="1"></label>
+      <label>Další v<input id="stokeNextIn" type="time"></label>
+      <label class="chk"><input id="sound" type="checkbox"> zvuk</label>
+    </div>
+  </div>
+</details>
+
+<details class="sec" id="secChart" data-key="chart">
+  <summary><h2>Graf</h2><span class="sum" id="sumChart"></span></summary>
+  <div class="body">
+    <div id="chart" role="img" aria-label="Graf teploty"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+</details>
+
+<details class="sec" id="secFilt" data-key="filt">
+  <summary><h2>Filtrace</h2><span class="sum" id="sumFilt"></span></summary>
+  <div class="body">
+    <table><thead><tr><th>Začátek</th><th>Délka</th><th></th></tr></thead><tbody id="filtList"></tbody></table>
+    <form id="filtForm" class="row" autocomplete="off">
+      <label>Začátek<input id="fiTime" type="time" required></label>
+      <label>Délka min<input id="fiDur" class="w5" type="number" inputmode="numeric" min="1" max="720" value="30" required></label>
+      <button type="submit">Přidat okno</button>
+    </form>
+    <div class="row">
+      <label>Faktor zrychlení chladnutí<input id="fiFactor" class="w5" inputmode="decimal"></label>
+      <span class="small" id="fiEst"></span>
+    </div>
+    <span class="small">Okno filtrace + 15 min: varování se potlačí a páry bodů se nepoužijí pro odhad k. Časy jsou Europe/Prague, platí každý den.</span>
+  </div>
+</details>
+
+<details class="sec" id="secMan" data-key="man">
+  <summary><h2>Ruční zápisy</h2><span class="sum" id="sumMan"></span></summary>
+  <div class="body"><table><thead><tr><th>Čas</th><th>°C</th><th>Okolí</th><th>Značky</th><th></th></tr></thead><tbody id="manList"></tbody></table></div>
+</details>
+
+<details class="sec" id="secImport" data-key="import">
+  <summary><h2>Import dat</h2><span class="sum" id="sumImport"></span></summary>
+  <div class="body">
+    <label class="drop" id="drop">Přetáhni CSV z čidla sem, nebo vyber soubor
+      <input id="file" type="file" accept=".csv,.txt,text/csv,text/plain">
+    </label>
+    <div id="importPrev" class="small" aria-live="polite"></div>
+    <div class="row" id="importAct" hidden><button id="importOk" class="primary" type="button">Přidat import</button><button id="importNo" type="button">Zahodit</button></div>
+    <div id="importInfo" class="small"></div>
+  </div>
+</details>
+
+<details class="sec" id="secSync" data-key="sync">
+  <summary><h2>Synchronizace</h2><span class="sum" id="sumSync"></span></summary>
+  <div class="body">
+    <div id="syncState" class="msg" aria-live="polite"></div>
+    <div class="row">
+      <label>Token (GitHub, jen toto repo, Contents: Read and write)<input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…"></label>
+    </div>
+    <div class="row">
+      <button id="tokSave" type="button">Uložit token</button>
+      <button id="tokCheck" type="button">Ověřit</button>
+      <button id="tokDel" type="button">Odebrat token</button>
+    </div>
+    <div id="tokMsg" class="msg" aria-live="polite"></div>
+    <div class="row">
+      <label>Repo (vlastník/název)<input id="repoIn" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label>Jméno zařízení<input id="devIn" autocomplete="off" class="w7"></label>
+      <button id="repoSave" type="button">Uložit</button>
+    </div>
+    <div class="row">
+      <button id="syncNow" type="button">Synchronizovat teď</button>
+      <button id="dlJson" type="button">Stáhnout data (JSON)</button>
+      <button id="dlCsv" type="button">Stáhnout zápisy (CSV)</button>
+    </div>
+    <span class="small">Token zůstává jen v tomto prohlížeči (localStorage), do repa ani do adresy se nikdy neposílá. Doporučená expirace tokenu: 1 rok.</span>
+  </div>
+</details>
+
+<details class="sec" id="secHow" data-key="how">
+  <summary><h2>Jak se počítá</h2><span class="sum"></span></summary>
+  <div class="body small">
+    <p><b>Natápění:</b> lineární regrese bodů v okně (výchozí 60 min, min. 4 body), σ reziduí ≥ 0,15 °C. ETA = čas, kdy přímka dosáhne cíle; nejistota z predikčního intervalu (min. 3 min). Pravděpodobnost = Φ((čas − ETA)/σ) a platí jen pro nepřerušený ohřev. Konzervativní odhad = průměrné tempo od startu včetně pauz. Pauza = rychlost &lt; 2 °C/h aspoň 20 min.</p>
+    <p><b>Pokles:</b> Newtonův zákon s proměnným okolím, dT/dt = −k·f(t)·(T − Ta(t)), f = faktor filtrace v jejím okně. k z párů sousedních bodů od maxima / posledního zamíchání / koupání, páry ve filtraci se pro k nepoužijí. Predikce numericky po 5 min.</p>
+    <p><b>Čidlo je u hladiny:</b> po zamíchání, filtraci nebo koupání teplota skokově klesne – to není „oheň vyhasíná“.</p>
+    <p><b>Prahy varování</b> (pokles −0,5 °C/h nebo −0,2 °C, slabý ohřev &lt; 40 % trendu a &lt; 2 °C/h, barvy pravděpodobnosti 80/50 %) jsou návrh a <b>nejsou ověřené na této kádi</b>. Koeficient filtrace 1,5 je odhad z dat 26. 10. 2026.</p>
+    <p><b>Okolí:</b> Open-Meteo, hodinová předpověď/historie pro Kyselovice (49,3772 N, 17,4019 E); ruční hodnota má přednost. Starší než ~2 dny se doplní z cache, jinak se použije nejbližší známá hodnota.</p>
+  </div>
+</details>
+
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
