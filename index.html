@@ -50,7 +50,7 @@
 
 <div id="alert" class="alert" role="alert" aria-live="assertive" hidden></div>
 
-<section aria-label="Přehled">
+<section aria-label="Přehled" class="full">
   <div class="tiles" aria-live="polite">
     <div class="tile" id="tEta"><span class="l" id="tEtaL">Natopeno 40 °C</span><span class="v" id="tEtaV">–</span><span class="s" id="tEtaS"></span></div>
     <div class="tile" id="tTrend"><span class="l" id="tTrendL">Trend</span><span class="v" id="tTrendV">–</span><span class="s" id="tTrendS"></span></div>
@@ -58,7 +58,7 @@
   </div>
 </section>
 
-<details class="sec" id="secDetail" data-key="detail">
+<details class="sec full" id="secDetail" data-key="detail">
   <summary><h2>Podrobnosti</h2><span class="sum" id="sumDetail"></span></summary>
   <div class="body">
     <div class="row" id="heatCtl">
@@ -115,9 +115,25 @@
   </div>
 </details>
 
-<details class="sec" id="secChart" data-key="chart">
+<details class="sec full" id="secChart" data-key="chart">
   <summary><h2>Graf</h2><span class="sum" id="sumChart"></span></summary>
   <div class="body">
+    <div class="row" id="chartCtl">
+      <label>Rozsah
+        <span class="seg" role="group" aria-label="Rozsah grafu">
+          <button type="button" data-range="auto" aria-pressed="true">Auto</button><button type="button" data-range="3" aria-pressed="false">3 h</button><button type="button" data-range="6" aria-pressed="false">6 h</button><button type="button" data-range="12" aria-pressed="false">12 h</button><button type="button" data-range="24" aria-pressed="false">24 h</button><button type="button" data-range="0" aria-pressed="false">Vše</button>
+        </span>
+      </label>
+      <fieldset class="shows"><legend>Viditelnost</legend>
+        <label class="chk"><input type="checkbox" data-show="sensor"> čidlo</label>
+        <label class="chk"><input type="checkbox" data-show="manual"> zápisy</label>
+        <label class="chk"><input type="checkbox" data-show="model"> trend / predikce</label>
+        <label class="chk"><input type="checkbox" data-show="filt"> filtrace</label>
+        <label class="chk"><input type="checkbox" data-show="zones"> pauzy / zóna</label>
+        <label class="chk"><input type="checkbox" data-show="amb"> okolí</label>
+        <label class="chk"><input type="checkbox" data-show="ref"> cíl / hranice</label>
+      </fieldset>
+    </div>
     <div id="chart" role="img" aria-label="Graf teploty"></div>
     <div class="legend" id="legend"></div>
   </div>

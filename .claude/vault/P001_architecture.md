@@ -17,6 +17,7 @@ Static GitHub Pages site (vanilla ES modules, no build, no runtime deps). UI in 
 - Time zone Europe/Prague handled explicitly via Intl (`zonedToEpoch`), tests independent of machine TZ.
 - CSP meta: connect-src only api.github.com + api.open-meteo.com; no inline styles/scripts.
 - Cooling threshold default is **4 °C** = freeze risk of water in filtration (user-confirmed), not 37.
+- Layout: CSS grid 1/2/3/4 columns at 760/1280/1900 px, header/alert/tiles/details/chart span full width. Chart has range (Auto/3/6/12/24 h/Vše) and per-series visibility toggles, stored per device in `hottube.ui`.
 - Tests: `node --test test/*.test.js` (33 tests incl. SPEC 6.5 reference values).
 
 ## Related Topics
@@ -25,6 +26,7 @@ Static GitHub Pages site (vanilla ES modules, no build, no runtime deps). UI in 
 
 ## History
 
+- 2026-10-26: Chart range/visibility controls, full-width responsive grid
 - 2026-10-26: Initial implementation M1–M5 from SPEC v1.0
 
 ---
