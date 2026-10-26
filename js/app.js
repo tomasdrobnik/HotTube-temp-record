@@ -18,7 +18,7 @@ const rnd5 = t => Math.ceil(t / (5 * MIN)) * 5 * MIN;
 const UI_KEY = 'hottube.ui', DEV_KEY = 'hottube.device';
 const kvGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const kvSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* UI nastavení je nepovinné */ } };
-const ui = { open: {}, winMin: 60, sound: false, range: 'auto', show: {}, ...(kvGet(UI_KEY) || {}) };
+const ui = { open: {}, winMin: 60, sound: false, range: 'auto', ahead: 0, show: {}, ...(kvGet(UI_KEY) || {}) };
 const saveUi = () => kvSet(UI_KEY, ui);
 
 function deviceName() {
@@ -226,11 +226,17 @@ function renderChart() {
   const open = $('secChart').open; if (!open || !D || !D.pts.length) { $('chart').innerHTML = D && D.pts.length ? '' : '<span class="small">Žádná data.</span>'; return; }
   const cs = getComputedStyle(document.documentElement), c = {};
   for (const k of ['line', 'muted', 'water', 'heat', 'bad', 'pause', 'panel']) c[k] = cs.getPropertyValue('--' + k).trim();
-  $('chart').innerHTML = chartSvg({ W: $('chart').clientWidth, rangeH: ui.range === 'auto' ? undefined : +ui.range, show: ui.show, pts: D.pts, mode: D.cool ? 'cool' : 'heat', R: D.R, C: D.C, filt: D.filt, amb: D.amb, target: D.ss.target, thr: D.ss.coolThr, coolStart: D.ss.coolStart, colors: c });
+  $('chart').innerHTML = chartSvg({ W: $('chart').clientWidth, rangeH: ui.range === 'auto' ? undefined : +ui.range, aheadMs: (ui.ahead || 0) * H, show: ui.show, pts: D.pts, mode: D.cool ? 'cool' : 'heat', R: D.R, C: D.C, filt: D.filt, amb: D.amb, target: D.ss.target, thr: D.ss.coolThr, coolStart: D.ss.coolStart, colors: c });
   $('legend').innerHTML = '<span><i class="lg-water"></i>čidlo</span><span><i class="lg-heat"></i>ruční zápis</span><span><i class="lg-water dash"></i>' + (D.cool ? 'predikce' : 'trend') + '</span><span>modré pruhy = filtrace</span>' + (D.cool ? '<span>šedá zóna = od konce natápění</span>' : '<span>šedé pruhy = pauzy ohřevu</span>');
 }
 
 function syncChartCtl() {
+  const presets = [...document.querySelectorAll('[data-ahead]')].map(b => +b.dataset.ahead);
+  document.querySelectorAll('[data-ahead]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.ahead === (ui.ahead || 0))));
+  if (document.activeElement !== $('aheadVal') && document.activeElement !== $('aheadUnit')) {
+    const custom = ui.ahead > 0 && !presets.includes(ui.ahead), d = custom && ui.ahead % 24 === 0;
+    $('aheadVal').value = custom ? nf(d ? ui.ahead / 24 : ui.ahead, ui.ahead % 1 && !d ? 1 : 0) : ''; $('aheadUnit').value = d ? 'd' : 'h';
+  }
   document.querySelectorAll('[data-range]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === String(ui.range))));
   document.querySelectorAll('[data-show]').forEach(cb => { cb.checked = ui.show[cb.dataset.show] !== false; });
 }
@@ -428,6 +434,9 @@ function bind() {
   });
   // graf: rozsah a viditelnost
   document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => { ui.range = b.dataset.range; saveUi(); syncChartCtl(); renderChart(); }));
+  document.querySelectorAll('[data-ahead]').forEach(b => b.addEventListener('click', () => { ui.ahead = +b.dataset.ahead; saveUi(); syncChartCtl(); renderChart(); }));
+  const customAhead = () => { const v = pn($('aheadVal').value); ui.ahead = isFinite(v) && v > 0 ? Math.min(v * ($('aheadUnit').value === 'd' ? 24 : 1), 14 * 24) : 0; saveUi(); renderChart(); document.querySelectorAll('[data-ahead]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.ahead === ui.ahead))); };
+  $('aheadVal').addEventListener('input', customAhead); $('aheadUnit').addEventListener('change', customAhead);
   document.querySelectorAll('[data-show]').forEach(cb => cb.addEventListener('change', () => { ui.show = { ...ui.show, [cb.dataset.show]: cb.checked }; saveUi(); renderChart(); }));
   syncChartCtl();
   // téma grafu

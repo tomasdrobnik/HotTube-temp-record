@@ -6,7 +6,7 @@ const tickLabel = (t, spanMin) => { const p = pragueParts(t); return spanMin > 3
 const nf = (v, d = 1) => v.toLocaleString('cs-CZ', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 const ALL_ON = { sensor: true, manual: true, model: true, filt: true, zones: true, amb: true, ref: true };
-/** o: {rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → SVG string */
+/** o: {aheadMs (>0 = osa končí o tolik za posledním bodem, trend/predikce se extrapoluje), rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → SVG string */
 export function chartSvg(o) {
   const { pts, mode, R, C, filt, amb, colors: c } = o;
   const show = { ...ALL_ON, ...(o.show || {}) };
@@ -24,11 +24,13 @@ export function chartSvg(o) {
   }
   x1 += 10 * MIN;
   if (o.rangeH === 0) x0 = pts[0].t - 10 * MIN; else if (o.rangeH > 0) x0 = last.t - o.rangeH * H;
+  if (o.aheadMs > 0) x1 = last.t + o.aheadMs;
   if (x1 - x0 < 30 * MIN) x1 = x0 + 30 * MIN;
   const vis = pts.filter(p => p.t >= x0 && (p.src === 'man' ? show.manual : show.sensor));
   const ambS = []; if (amb && show.amb) for (let i = 0; i <= 48; i++) { const t = x0 + (x1 - x0) * i / 48; ambS.push([t, amb(t)]); }
   const refY = mode === 'cool' ? o.thr : o.target;
-  let y0 = Math.min(...vis.map(p => p.T), refY, ...ambS.map(a => a[1]));
+  const simPath = mode === 'cool' && show.model && C && C.fit && C.k > 0 && C.sim ? C.sim(x1) : null;
+  let y0 = Math.min(...vis.map(p => p.T), refY, ...ambS.map(a => a[1]), ...(simPath ? simPath.map(q => q[1]) : []));
   let y1 = Math.max(...vis.map(p => p.T), refY);
   y0 = Math.floor((y0 - 1) / 5) * 5; y1 = Math.ceil((y1 + 1) / 5) * 5;
   const X = t => L + (t - x0) / (x1 - x0) * iw, Y = v => T + (1 - (v - y0) / (y1 - y0)) * ih;
@@ -47,13 +49,14 @@ export function chartSvg(o) {
   if (show.ref) s += `<line x1="${L}" x2="${L + iw}" y1="${ry}" y2="${ry}" stroke="${rc}" stroke-width="1.2" stroke-dasharray="6 4"/><text x="${L + 4}" y="${ry + (mode === 'cool' ? 14 : -4)}" fill="${rc}">${mode === 'cool' ? 'hranice' : 'cíl'} ${nf(refY, refY % 1 ? 1 : 0)} °C</text>`;
   if (ambS.length) s += `<polyline points="${ambS.map(a => X(a[0]) + ',' + Y(a[1])).join(' ')}" fill="none" stroke="${c.muted}" stroke-width="1.3" stroke-dasharray="1 3"/>`;
   if (mode === 'heat' && show.model && R && R.fit && R.eta) { // trend: přímka z okna až do ETA
-    const f = R.fit, tA = R.win[0].t, tB = Math.min(R.eta, x1);
-    const yy = t => f.pred((t - f.t0) / H);
-    s += `<line x1="${X(tA)}" y1="${Y(yy(tA))}" x2="${X(tB)}" y2="${Y(yy(tB))}" stroke="${c.water}" stroke-width="2" stroke-dasharray="5 4"/>`;
+    const f = R.fit, tA = R.win[0].t, tB = o.aheadMs > 0 ? x1 : Math.min(R.eta, x1);
+    const yy = t => f.pred((t - f.t0) / H), yc = t => Y(Math.max(y0, Math.min(y1, yy(t))));
+    const tB2 = o.aheadMs > 0 && f.b > 0 && yy(tB) > y1 ? f.t0 + ((y1 - f.a) / f.b) * H : tB; // přímka končí na horním okraji
+    s += `<line x1="${X(tA)}" y1="${yc(tA)}" x2="${X(tB2)}" y2="${yc(tB2)}" stroke="${c.water}" stroke-width="2" stroke-dasharray="5 4"/>`;
     if (R.sigma) { const a = Math.max(R.eta - 1.96 * R.sigma, x0), b = Math.min(R.eta + 1.96 * R.sigma, x1); s += `<rect x="${X(a)}" y="${T}" width="${Math.max(2, X(b) - X(a))}" height="${ih}" fill="${c.heat}" opacity=".14"><title>95% interval ${hmOf(R.eta - 1.96 * R.sigma)}–${hmOf(R.eta + 1.96 * R.sigma)}</title></rect>`; }
   }
-  if (mode === 'cool' && show.model && C && C.fit && C.k > 0 && C.sim) {
-    const pl = C.sim(x1).filter(q => q[1] >= y0).map(q => X(q[0]) + ',' + Y(Math.min(q[1], y1)));
+  if (simPath) {
+    const pl = simPath.filter(q => q[1] >= y0).map(q => X(q[0]) + ',' + Y(Math.min(q[1], y1)));
     s += `<polyline points="${pl.join(' ')}" fill="none" stroke="${c.water}" stroke-width="2" stroke-dasharray="5 4"/>`;
   }
   const dot = p => {

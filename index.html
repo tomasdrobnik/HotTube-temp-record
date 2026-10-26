@@ -124,6 +124,15 @@
           <button type="button" data-range="auto" aria-pressed="true">Auto</button><button type="button" data-range="3" aria-pressed="false">3 h</button><button type="button" data-range="6" aria-pressed="false">6 h</button><button type="button" data-range="12" aria-pressed="false">12 h</button><button type="button" data-range="24" aria-pressed="false">24 h</button><button type="button" data-range="0" aria-pressed="false">Vše</button>
         </span>
       </label>
+      <label>Dopředu (trend / predikce)
+        <span class="seg" role="group" aria-label="Horizont dopředu">
+          <button type="button" data-ahead="0" aria-pressed="true">Auto</button><button type="button" data-ahead="6" aria-pressed="false">+6 h</button><button type="button" data-ahead="12" aria-pressed="false">+12 h</button><button type="button" data-ahead="24" aria-pressed="false">+1 d</button><button type="button" data-ahead="72" aria-pressed="false">+3 d</button>
+        </span>
+      </label>
+      <div class="row">
+        <label>Vlastní +<input id="aheadVal" class="w5" inputmode="decimal" placeholder="x" autocomplete="off"></label>
+        <label>jednotka<select id="aheadUnit"><option value="h">h</option><option value="d">d</option></select></label>
+      </div>
       <fieldset class="shows"><legend>Viditelnost</legend>
         <label class="chk"><input type="checkbox" data-show="sensor"> čidlo</label>
         <label class="chk"><input type="checkbox" data-show="manual"> zápisy</label>
