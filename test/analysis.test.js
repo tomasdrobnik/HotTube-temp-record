@@ -153,3 +153,38 @@ test('summarize: souhrn relace pro archiv', () => {
   const s = A.summarize(allPts().slice(0, 130), { target: 40, coolStart: null, k: null, now: NOW });
   assert.equal(s.target, 40); assert.ok(s.max >= 34); assert.equal(s.closedAt, NOW); assert.equal(s.count, 2);
 });
+
+test('dedupeCsv: nové / existující / změněné řádky; opakovaný import nic nepřidá', () => {
+  const [c25, c26] = fixtureCsv();
+  const existing = A.parseCSV(c25.text, NOW).pts;
+  const again = A.dedupeCsv(c25.text, existing, NOW);
+  assert.equal(again.fresh, 0); assert.equal(again.changed, 0); assert.ok(again.same > 100);
+  const next = A.dedupeCsv(c26.text, existing, NOW);
+  assert.equal(next.same, 0); assert.equal(next.fresh, 40);
+  // částečný překryv + změněná hodnota
+  const extra = 'Time\tTemperature\tUnit\n10/25/2026 00:00:00\t7.8\t℃\n10/25/2026 00:10:00\t9.9\t℃\n10/27/2026 00:00:00\t5.0\t℃\n';
+  const d = A.dedupeCsv(extra, existing, NOW);
+  assert.deepEqual([d.same, d.changed, d.fresh], [1, 1, 1]);
+  assert.equal(A.parseCSV(d.text, NOW).pts.length, 2); // hlavička + jen změněný a nový řádek
+});
+
+test('priorRate: medián tempa z archivních souhrnů, ignoruje nesmyslné', () => {
+  const mk = (rate, h = 4) => ({ summary: { start: 0, startT: 10, max: 10 + rate * h, maxAt: h * H } });
+  assert.equal(A.priorRate([]), null);
+  near(A.priorRate([{ ...mk(4) }, mk(6), mk(5)]), 5, 1e-9);
+  assert.equal(A.priorRate([{ summary: { start: 0, startT: 10, max: 11, maxAt: H } }, { summary: { orphaned: true } }]), null);
+});
+
+test('Prior z předchozích ohřevů: jeden bod = čistě prior; 2–3 body mix; od 4 bodů rozhoduje jen aktuální trend', () => {
+  const t0 = A.zonedToEpoch(2026, 10, 27, 12, 0), prior = 4;
+  const at = (i, T) => ({ t: t0 + i * 10 * MIN, T });
+  const R1 = A.analyze([at(0, 20)], { manualOnly: true, prior });
+  assert.ok(R1.ok && R1.fromPrior && R1.prelim); near(R1.eta, t0 + 5 * H, 1, 'ETA = 20 °C / 4 °C/h');
+  assert.equal(A.analyze([at(0, 20)], { manualOnly: true }).ok, false); // bez priorů beze změny
+  const pts3 = [at(0, 20), at(1, 21), at(2, 22)]; // skutečně 6 °C/h
+  const R3 = A.analyze(pts3, { manualOnly: true, prior }), R3n = A.analyze(pts3, { manualOnly: true });
+  assert.ok(R3.rate > prior && R3.rate < R3n.rate, 'mix leží mezi priorem a aktuálním trendem: ' + R3.rate);
+  assert.ok(R3.priorW >= 0.5, 'aktuální trend má váhu ≥ 50 %');
+  const pts5 = [0, 1, 2, 3, 4].map(i => at(i, 20 + i)), R5 = A.analyze(pts5, { manualOnly: true, prior }), R5n = A.analyze(pts5, { manualOnly: true });
+  assert.equal(R5.eta, R5n.eta); assert.equal(R5.rate, R5n.rate); assert.ok(R5.etaPrior); assert.equal(R5.fromPrior, undefined);
+});

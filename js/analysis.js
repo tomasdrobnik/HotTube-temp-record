@@ -105,6 +105,20 @@ export function mergePts(base, manual) {
   for (const p of manual || []) if (!p.deleted) map.set(Math.round(p.t / 1000), { ...p, src: 'man' });
   return [...map.values()].sort((a, b) => a.t - b.t);
 }
+/** Porovná nový CSV text s už uloženými body (duplicity uvnitř souboru se nejdřív sloučí).
+ *  → {fresh, same, changed, total, text}; `text` = hlavička + jen nové/změněné body v normalizovaném tvaru. */
+export function dedupeCsv(text, existing, now) {
+  const have = new Map(); for (const p of existing) have.set(Math.round(p.t / 1000), p.T);
+  const { pts } = parseCSV(text, now); const keep = []; let fresh = 0, same = 0, changed = 0;
+  const z = n => String(n).padStart(2, '0');
+  for (const p of pts) {
+    const k = Math.round(p.t / 1000);
+    if (have.has(k)) { if (Math.abs(have.get(k) - p.T) < 1e-9) { same++; continue; } changed++; } else fresh++;
+    const w = pragueParts(p.t);
+    keep.push(`${w.y}-${z(w.mo)}-${z(w.d)} ${z(w.h)}:${z(w.mi)}:${z(w.s)}\t${p.T}\t℃`);
+  }
+  return { fresh, same, changed, total: pts.length, text: ['Time\tTemperature\tUnit', ...keep].join('\n') + '\n' };
+}
 /** Mezery > minMin (v nástěnném čase, aby DST duplicita netvořila falešnou mezeru). */
 export function findGaps(pts, minMin = 30) {
   const out = [];
@@ -137,6 +151,20 @@ export function erf(x) {
 }
 export const Phi = z => 0.5 * (1 + erf(z / Math.SQRT2));
 
+/* ===== Prior z předchozích ohřevů ===== */
+/** Medián tempa ohřevu (°C/h) z archivních souhrnů {start,startT,max,maxAt}; null, když není dost dat. */
+export function priorRate(archive) {
+  const r = [];
+  for (const a of archive || []) {
+    const m = a && a.summary; if (!m || m.start == null || m.maxAt == null) continue;
+    const h = (m.maxAt - m.start) / H;
+    if (h >= 0.25 && m.max - m.startT >= 3) r.push((m.max - m.startT) / h);
+  }
+  if (!r.length) return null;
+  r.sort((a, b) => a - b); const i = r.length >> 1;
+  return r.length % 2 ? r[i] : (r[i - 1] + r[i]) / 2;
+}
+
 /* ===== Ohřev ===== */
 /** Klidová hladina = medián prvních 20 % (min. 3); start = poslední bod před prvním překročením o 0,5 °C. */
 export function findStart(pts) {
@@ -160,8 +188,14 @@ export function findPauses(P, thr = CONFIG.pauseRate, minDur = CONFIG.pauseMinDu
     all: runs,
   };
 }
-export function analyze(pts, { target = 40, winMin = 60, manualOnly = false } = {}) {
-  const R = { target, ok: false };
+export function analyze(pts, { target = 40, winMin = 60, manualOnly = false, prior = null } = {}) {
+  const R = { target, ok: false, prior };
+  if (pts.length === 1 && prior > CONFIG.minRise && manualOnly) { // jediný bod: jen odhad z předchozích ohřevů
+    const p = pts[0]; R.start = R.last = p; R.heat = [p]; R.prelim = true; R.fromPrior = true; R.priorW = 0;
+    R.rate = R.rateAvg = R.rateShort = prior; R.rateShortFrom = p.t; R.pauses = { done: [], ongoing: null }; R.ok = true;
+    if (p.T >= target) { R.reached = p.t; return R; }
+    R.eta = p.t + (target - p.T) / prior * H; R.sigma = null; return R;
+  }
   if (pts.length < 2) { R.msg = pts.length ? 'Zapiš další teplotu – odhad potřebuje alespoň 2 body.' : 'Žádná data. Zapiš teplotu nebo importuj CSV.'; return R; }
   const si = manualOnly ? 0 : findStart(pts), start = pts[si], heat = pts.slice(si), last = pts[pts.length - 1];
   R.start = start; R.last = last; R.heat = heat;
@@ -169,6 +203,10 @@ export function analyze(pts, { target = 40, winMin = 60, manualOnly = false } = 
   if (heat.length < 4) {
     const h = (last.t - start.t) / H; if (h <= 0) { R.msg = 'Zapiš další teplotu.'; return R; }
     R.prelim = true; R.rate = R.rateAvg = R.rateShort = (last.T - start.T) / h; R.rateShortFrom = start.t;
+    if (prior > CONFIG.minRise) { // aktuální trend má přednost: váha n/4 (n = počet bodů), zbytek prior
+      const w = Math.min(1, heat.length / 4); R.priorW = w; R.fromPrior = true;
+      R.rate = R.rateAvg = R.rateShort = w * R.rate + (1 - w) * prior;
+    }
     R.pauses = { done: [], ongoing: null }; R.ok = true;
     if (last.T >= target) { R.reached = heat.find(p => p.T >= target).t; return R; }
     if (R.rate < CONFIG.minRise) { R.msg = 'Teplota neroste – čas nelze odhadnout.'; R.noEta = true; return R; }
@@ -179,8 +217,8 @@ export function analyze(pts, { target = 40, winMin = 60, manualOnly = false } = 
   const f = linfit(win, last.t); R.fit = f; R.rate = f.b;
   const recent = heat.filter(p => p.t >= last.t - 15 * MIN); const r0 = recent.length >= 2 ? recent[0] : heat[heat.length - 2];
   R.rateShort = (last.T - r0.T) / ((last.t - r0.t) / H); R.rateShortFrom = r0.t;
-  const prior = pick(heat.slice(0, -1));
-  if (prior.length >= 3) { const fp = linfit(prior, last.t); const pr = fp.pred(0), se = fp.se(0); R.check = { pred: pr, se, z: (last.T - pr) / se, dev: last.T - pr }; }
+  const priorWin = pick(heat.slice(0, -1));
+  if (priorWin.length >= 3) { const fp = linfit(priorWin, last.t); const pr = fp.pred(0), se = fp.se(0); R.check = { pred: pr, se, z: (last.T - pr) / se, dev: last.T - pr }; }
   R.pauses = findPauses(heat);
   R.rateAvg = (last.T - start.T) / ((last.t - start.t) / H);
   if (last.T >= target) { R.reached = pts.find((p, i) => i >= si && p.T >= target).t; R.ok = true; return R; }
@@ -192,6 +230,7 @@ export function analyze(pts, { target = 40, winMin = 60, manualOnly = false } = 
   let x = (target - f.a) / f.b; if (x < 0) x = 0;
   R.eta = last.t + x * H; R.sigma = Math.max(f.se(x) / f.b * H, CONFIG.minSigmaMin * MIN);
   if (R.rateAvg > CONFIG.minRise) R.etaCons = last.t + (target - last.T) / R.rateAvg * H;
+  if (prior > CONFIG.minRise) R.etaPrior = last.t + (target - last.T) / prior * H;
   R.ok = true; return R;
 }
 export const probBy = (R, t) => R.eta && R.sigma ? Phi((t - R.eta) / R.sigma) : (R.reached && t >= R.reached ? 1 : null);

@@ -46,7 +46,8 @@ function derive() {
   const pts = A.mergePts(base.pts, manual), filt = st.filt.windows, ss = st.session;
   const amb = A.makeAmbient(weather.series, manual, ss.coolTa);
   const d = { st, now, base, manual, pts, filt, ss, amb, cool: ss.mode === 'cool' && ss.coolStart != null };
-  d.R = A.analyze(pts, { target: ss.target, winMin: ui.winMin, manualOnly: base.pts.length === 0 });
+  d.prior = A.priorRate(st.archive);
+  d.R = A.analyze(pts, { target: ss.target, winMin: ui.winMin, manualOnly: base.pts.length === 0, prior: d.prior });
   if (d.cool) d.C = A.analyzeCool(pts, { coolStart: ss.coolStart, amb, thr: ss.coolThr, F: st.filt.factor, filt });
   return d;
 }
@@ -107,7 +108,7 @@ function renderHeat(d) {
   else if (R.prelim) tc = 'warn';
   setTile('tTrend', tc, 'Trend', tt, R.rate != null ? nf(R.rate) + ' °C/h' : '');
   if (R.reached) setTile('tEta', 'ok', tl, fmt(R.reached), 'dosaženo');
-  else if (R.eta) setTile('tEta', R.prelim ? 'warn' : tc, tl, (R.prelim ? '≈ ' : '') + fmt(R.eta), R.prelim ? 'předběžně' : '± ' + Math.round(R.sigma / MIN) + ' min');
+  else if (R.eta) setTile('tEta', R.prelim ? 'warn' : tc, tl, (R.prelim ? '≈ ' : '') + fmt(R.eta), R.prelim ? (R.fromPrior ? 'předběžně, předchozí ohřevy' : 'předběžně') : '± ' + Math.round(R.sigma / MIN) + ' min');
   else setTile('tEta', 'bad', tl, '–', 'neroste');
   // pravděpodobnost do zvoleného času
   if (R.eta && !deadlineTouched && document.activeElement !== $('deadline')) $('deadline').value = hmOf(rnd5(R.eta + 30 * MIN));
@@ -138,6 +139,8 @@ function renderHeat(d) {
   notes.push(`<div>Rychlost: okno trendu ${nf(R.rate)} °C/h · posledních ${Math.round((ref - R.rateShortFrom) / MIN)} min ${nf(R.rateShort)} °C/h · průměr od startu ${nf(R.rateAvg)} °C/h.</div>`);
   if (R.eta && R.etaCons) notes.push(`<div><b>Scénáře:</b> trend → ${fmtD(R.eta, ref)}; konzervativně (průměr od startu vč. pauz ${nf(R.rateAvg)} °C/h) → ${fmtD(R.etaCons, ref)}.</div>`);
   else if (R.noEta && R.etaCons) notes.push(`<div><b>Konzervativní odhad</b> (průměr od startu): ${fmtD(R.etaCons, ref)} – platí jen pokud se ohřev obnoví.</div>`);
+  if (R.fromPrior) notes.push(`<div><b>Předchozí ohřevy:</b> typické tempo ${nf(R.prior)} °C/h. ${R.priorW ? `Předběžný odhad = ${Math.round(R.priorW * 100)} % aktuální trend + ${Math.round((1 - R.priorW) * 100)} % předchozí ohřevy` : 'Zatím jen jeden bod, odhad je čistě z předchozích ohřevů'}; od 4 bodů platí jen aktuální trend.</div>`);
+  else if (R.etaPrior) notes.push(`<div>Pro srovnání – podle předchozích ohřevů (${nf(R.prior)} °C/h) by bylo ${fmtD(R.etaPrior, ref)}. Rozhoduje aktuální trend.</div>`);
   if (R.prelim) notes.push(`<div>Předběžné: start ${fmtD(R.start.t, ref)} při ${nf(R.start.T)} °C. Kontrola trendu a pravděpodobnost od 4 zápisů.</div>`);
   if (R.pauses.ongoing) notes.push(`<div><b>Probíhá zpomalení/zastavení</b> od ${fmt(R.pauses.ongoing.a)} (${Math.round((R.pauses.ongoing.b - R.pauses.ongoing.a) / MIN)} min). Pravděpodobnost platí jen pro nepřerušený ohřev.</div>`);
   if (R.pauses.done.length) notes.push(`<div>Dřívější pauzy: ${R.pauses.done.map(p => `${fmt(p.a)}–${fmt(p.b)} (${Math.round((p.b - p.a) / MIN)} min)`).join(', ')}.</div>`);
@@ -265,9 +268,13 @@ function previewImport(name, text) {
   const r = A.parseCSV(text, Date.now());
   if (!r.pts.length) { pendingImport = null; $('importPrev').innerHTML = '<span class="msg bad">V souboru nejsou žádné použitelné řádky (čas + teplota).</span>'; $('importAct').hidden = true; return; }
   const gaps = A.findGaps(r.pts), a = r.pts[0].t, b = r.pts[r.pts.length - 1].t;
-  pendingImport = { name, text };
-  $('importPrev').innerHTML = `<b>${esc(name)}</b>: ${r.rows} řádků, ${fmtD(a, b)} – ${fmtD(b, b)}${r.dup ? `, ${r.dup} duplicitních časů sloučeno (typicky přechod na zimní čas)` : ''}.` +
-    (gaps.length ? '<br>Mezery &gt; 30 min: ' + gaps.slice(0, 6).map(g => `${fmtD(g.a, b)}–${fmtD(g.b, b)}`).join(', ') + (gaps.length > 6 ? ` … (+${gaps.length - 6})` : '') : '');
+  const dd = A.dedupeCsv(text, D.base.pts, Date.now());
+  const head = `<b>${esc(name)}</b>: ${r.rows} řádků, ${fmtD(a, b)} – ${fmtD(b, b)}${r.dup ? `, ${r.dup} duplicitních časů v souboru sloučeno (typicky přechod na zimní čas)` : ''}.`;
+  const gp = gaps.length ? '<br>Mezery &gt; 30 min: ' + gaps.slice(0, 6).map(g => `${fmtD(g.a, b)}–${fmtD(g.b, b)}`).join(', ') + (gaps.length > 6 ? ` … (+${gaps.length - 6})` : '') : '';
+  const cmp = `<br>Oproti uloženým datům: <b>${dd.fresh} nových</b>, ${dd.same} už existuje${dd.changed ? `, <b>${dd.changed} se stejným časem a jinou hodnotou</b> (nová hodnota přepíše starou)` : ''}.`;
+  if (dd.fresh + dd.changed === 0) { pendingImport = null; $('importPrev').innerHTML = head + gp + cmp + '<br><span class="msg ok">Nic nového – import se nepřidá.</span>'; $('importAct').hidden = true; return; }
+  pendingImport = { name, text: dd.text, fresh: dd.fresh };
+  $('importPrev').innerHTML = head + gp + cmp + (dd.same ? '<br>Přidají se jen nové a změněné řádky.' : '');
   $('importAct').hidden = false;
 }
 function renderImport() {
@@ -393,9 +400,8 @@ function bind() {
   $('importNo').addEventListener('click', () => { pendingImport = null; $('importPrev').textContent = ''; $('importAct').hidden = true; $('file').value = ''; });
   $('importOk').addEventListener('click', () => {
     if (!pendingImport) return; const p = pendingImport;
-    if (store.state.csv.some(c => c.text === p.text)) { $('importPrev').innerHTML = '<span class="msg">Tento soubor už je naimportovaný.</span>'; $('importAct').hidden = true; pendingImport = null; return; }
     store.mutate(d => { d.csv.push({ name: p.name, importedAt: Date.now(), text: p.text }); }, 'import ' + p.name);
-    pendingImport = null; $('importAct').hidden = true; $('importPrev').innerHTML = '<span class="msg ok">Import přidán.</span>'; $('file').value = '';
+    pendingImport = null; $('importAct').hidden = true; $('importPrev').innerHTML = `<span class="msg ok">Import přidán (${p.fresh} nových bodů).${store.token ? '' : ' Zatím jen v tomto prohlížeči – pro uložení do GitHubu vlož token v sekci Synchronizace.'}</span>`; $('file').value = '';
   });
   // synchronizace
   $('tokSave').addEventListener('click', async () => { const v = $('token').value.trim(); if (!v) { $('tokMsg').textContent = 'Vlož token.'; return; } store.setToken(v); $('token').value = ''; $('tokMsg').className = 'msg'; $('tokMsg').textContent = 'Token uložen v tomto prohlížeči. Synchronizuji…'; await store.flush(); await store.refresh(); $('tokMsg').textContent = 'Token uložen.'; });
