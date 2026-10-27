@@ -74,6 +74,15 @@
       <label>Hranice °C<input id="coThr" class="w5" inputmode="decimal" autocomplete="off"></label>
       <label>Okolí °C (prázdné = předpověď)<input id="coTa" class="w5" inputmode="decimal" autocomplete="off" placeholder="auto"></label>
       <label>Konec natápění<input id="coStart" type="time"></label>
+      <label>Predikce poklesu za
+        <span class="seg" role="group" aria-label="Horizont predikce poklesu">
+          <button type="button" data-hor="1" aria-pressed="true">1 h</button><button type="button" data-hor="3" aria-pressed="false">3 h</button><button type="button" data-hor="8" aria-pressed="false">8 h</button><button type="button" data-hor="12" aria-pressed="false">12 h</button><button type="button" data-hor="24" aria-pressed="false">1 d</button><button type="button" data-hor="48" aria-pressed="false">2 d</button>
+        </span>
+      </label>
+      <div class="row">
+        <label>Vlastní<input id="horVal" class="w5" inputmode="decimal" placeholder="x" autocomplete="off"></label>
+        <label>jednotka<select id="horUnit"><option value="h">h</option><option value="d">d</option></select></label>
+      </div>
     </div>
     <div id="notes" class="notes small"></div>
   </div>

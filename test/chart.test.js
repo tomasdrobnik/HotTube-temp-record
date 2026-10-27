@@ -32,7 +32,11 @@ test('hover pokles: měřený bod má rychlost poklesu a predikci za 1 h, za kon
   const C = A.analyzeCool(pts, { coolStart: MANUAL[1].t, amb, thr: 4, F: 1.5, filt: FILT });
   const ch = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, aheadMs: 24 * A.H });
   const i = ch.info(pts.at(-1).t - 30 * A.MIN);
-  assert.equal(i.kind, 'měřeno'); assert.ok(i.trend.rate < 0); assert.ok(i.pred.in1h < i.T);
+  assert.equal(i.kind, 'měřeno'); assert.ok(i.trend.rate < 0); assert.ok(i.pred.inH < i.T); assert.match(i.pred.label, /za 1 h/);
+  const ch8 = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, aheadMs: 24 * A.H, horizonH: 8, horizonLabel: '8 h' });
+  const i8 = ch8.info(pts.at(-1).t - 30 * A.MIN); assert.match(i8.pred.label, /za 8 h/); assert.ok(i8.pred.inH < i.pred.inH);
+  assert.match(ch8.svg, /\+8 h \d+,\d °C/); // značka bodu horizontu na křivce
+  const f8 = ch8.info(pts.at(-1).t + 2 * A.H); assert.ok(f8.pred.inH < f8.T);
   const f = ch.info(pts.at(-1).t + 6 * A.H);
   assert.equal(f.kind, 'predikce'); assert.ok(f.T < pts.at(-1).T); assert.ok(f.trend.rate < 0);
 });

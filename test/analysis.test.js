@@ -188,3 +188,12 @@ test('Prior z předchozích ohřevů: jeden bod = čistě prior; 2–3 body mix;
   const pts5 = [0, 1, 2, 3, 4].map(i => at(i, 20 + i)), R5 = A.analyze(pts5, { manualOnly: true, prior }), R5n = A.analyze(pts5, { manualOnly: true });
   assert.equal(R5.eta, R5n.eta); assert.equal(R5.rate, R5n.rate); assert.ok(R5.etaPrior); assert.equal(R5.fromPrior, undefined);
 });
+
+test('Predikce poklesu: volitelný horizont (inH), výchozí 1 h = in1h', () => {
+  const amb = A.makeAmbient(hourlySeries(), MANUAL), pts = allPts();
+  const base = { coolStart: MANUAL[1].t, amb, thr: 4, F: 1.5, filt: FILT };
+  const C1 = A.analyzeCool(pts, base), C8 = A.analyzeCool(pts, { ...base, horizonH: 8 }), C48 = A.analyzeCool(pts, { ...base, horizonH: 48 });
+  assert.equal(C1.horizonH, 1); assert.equal(C1.inH, C1.in1h); assert.equal(C8.in1h, C1.in1h);
+  assert.ok(C8.inH < C1.inH && C48.inH < C8.inH && C48.inH > 4);
+  near(C8.inH, C8.sim(C8.last.t + 8 * H).at(-1)[1], 1e-9);
+});

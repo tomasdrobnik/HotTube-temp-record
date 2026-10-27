@@ -6,7 +6,7 @@ const dayKey = t => { const p = pragueParts(t); return p.y * 10000 + p.mo * 100 
 const nf = (v, d = 1) => v.toLocaleString('cs-CZ', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 const ALL_ON = { sensor: true, manual: true, model: true, filt: true, zones: true, amb: true, ref: true };
-/** o: {aheadMs (>0 = osa končí o tolik za posledním bodem, trend/predikce se extrapoluje), rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → {svg, info(t), geom} */
+/** o: {horizonH (predikce poklesu, h), horizonLabel, aheadMs (>0 = osa končí o tolik za posledním bodem, trend/predikce se extrapoluje), rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → {svg, info(t), geom} */
 export const chartSvg = o => buildChart(o).svg;
 export function buildChart(o) {
   const { pts, mode, R, C, filt, amb, colors: c } = o;
@@ -25,11 +25,13 @@ export function buildChart(o) {
   }
   x1 += 10 * MIN;
   if (o.rangeH === 0) x0 = pts[0].t - 10 * MIN; else if (o.rangeH > 0) x0 = last.t - o.rangeH * H;
+  if (mode === 'cool' && o.horizonH > 1 && !(o.aheadMs > 0)) x1 = Math.max(x1, last.t + o.horizonH * H + 10 * MIN); // bod horizontu predikce má být vidět
   if (o.aheadMs > 0) x1 = last.t + o.aheadMs;
   if (x1 - x0 < 30 * MIN) x1 = x0 + 30 * MIN;
   const vis = pts.filter(p => p.t >= x0 && (p.src === 'man' ? show.manual : show.sensor));
   const ambS = []; if (amb && show.amb) for (let i = 0; i <= 48; i++) { const t = x0 + (x1 - x0) * i / 48; ambS.push([t, amb(t)]); }
   const refY = mode === 'cool' ? o.thr : o.target;
+  const simAtEarly = t => { if (!simPath) return null; for (let i = 1; i < simPath.length; i++) if (simPath[i][0] >= t) { const a = simPath[i - 1], b = simPath[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return simPath[simPath.length - 1][1]; };
   const simPath = mode === 'cool' && show.model && C && C.fit && C.k > 0 && C.sim ? C.sim(x1) : null;
   let y0 = Math.min(...vis.map(p => p.T), refY, ...ambS.map(a => a[1]), ...(simPath ? simPath.map(q => q[1]) : []));
   let y1 = Math.max(...vis.map(p => p.T), refY);
@@ -66,6 +68,10 @@ export function buildChart(o) {
     const pl = simPath.filter(q => q[1] >= y0).map(q => X(q[0]) + ',' + Y(Math.min(q[1], y1)));
     s += `<polyline points="${pl.join(' ')}" fill="none" stroke="${c.water}" stroke-width="2" stroke-dasharray="5 4"/>`;
   }
+  if (simPath && o.horizonH > 0 && last.t + o.horizonH * H >= x0 && last.t + o.horizonH * H <= x1) {
+    const th = last.t + o.horizonH * H, q = simAtEarly(th);
+    if (q != null) s += `<circle cx="${X(th)}" cy="${Y(Math.max(y0, Math.min(y1, q)))}" r="5" fill="${c.panel}" stroke="${c.water}" stroke-width="2"><title>za ${esc(o.horizonLabel || '')}: ${nf(q)} °C</title></circle><text x="${X(th) + (X(th) > L + iw - 70 ? -8 : 8)}" y="${Y(Math.max(y0, Math.min(y1, q))) - 8}" text-anchor="${X(th) > L + iw - 70 ? 'end' : 'start'}" fill="${c.water}" font-weight="600">+${esc(o.horizonLabel || '')} ${nf(q)} °C</text>`;
+  }
   const dot = p => {
     if (p.src === 'man') return `<circle cx="${X(p.t)}" cy="${Y(p.T)}" r="5" fill="${c.heat}" stroke="${c.panel}" stroke-width="1.5"><title>${hmOf(p.t)} ${nf(p.T)} °C (ručně${p.mix ? ', zamícháno' : ''}${p.bath ? ', koupání' : ''})</title></circle>`;
     return `<circle cx="${X(p.t)}" cy="${Y(p.T)}" r="2.6" fill="${c.water}"><title>${hmOf(p.t)} ${nf(p.T)} °C</title></circle>`;
@@ -98,6 +104,7 @@ export function buildChart(o) {
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (vis[m].t <= t) lo = m; else hi = m; }
     return Math.abs(vis[lo].t - t) <= Math.abs(vis[hi].t - t) ? vis[lo] : vis[hi];
   };
+  const hz = o.horizonH > 0 ? o.horizonH : 1, hzLabel = o.horizonLabel || '1 h';
   const clampY = v => Y(Math.max(y0, Math.min(y1, v)));
   const info = t => {
     if (t <= last.t + 5 * MIN) { // změřený bod
@@ -106,10 +113,10 @@ export function buildChart(o) {
       if (mode === 'heat') {
         const tv = trendAt(p.t);
         if (tv != null) o2.trend = { rate: heatRate, value: tv, dev: p.T - tv };
-        o2.pred = { eta: R && R.eta ? R.eta : null, in1h: tv != null ? trendAt(p.t + H) : null, label: 'za 1 h podle trendu' };
+        o2.pred = { eta: R && R.eta ? R.eta : null, inH: tv != null ? trendAt(p.t + H) : null, label: 'za 1 h podle trendu' };
       } else {
         o2.trend = { rate: rateCool(p.t, p.T) };
-        o2.pred = { in1h: project(p.t, p.T, 1), label: 'za 1 h podle křivky', tThr: C && C.tThr ? C.tThr : null };
+        o2.pred = { inH: project(p.t, p.T, hz), label: `za ${hzLabel} podle křivky`, tThr: C && C.tThr ? C.tThr : null };
       }
       return o2;
     }
@@ -119,7 +126,7 @@ export function buildChart(o) {
     return {
       t, T: Tp, kind: 'predikce', flags: [], sx: X(t), sy: clampY(Tp), amb: amb ? amb(t) : null,
       trend: { rate: mode === 'cool' ? rateCool(t, Tp) : heatRate },
-      pred: mode === 'cool' ? { tThr: C && C.tThr ? C.tThr : null } : { eta: R && R.eta ? R.eta : null },
+      pred: mode === 'cool' ? { inH: project(t, Tp, hz), label: `za ${hzLabel} podle křivky`, tThr: C && C.tThr ? C.tThr : null } : { eta: R && R.eta ? R.eta : null },
     };
   };
   s += `<g id="hv" visibility="hidden"><line id="hv-line" x1="0" x2="0" y1="${T}" y2="${T + ih}" stroke="${c.fg || c.muted}" stroke-width="1"/><circle id="hv-dot" cx="0" cy="0" r="6" fill="none" stroke="${c.fg || c.muted}" stroke-width="2"/></g>`;

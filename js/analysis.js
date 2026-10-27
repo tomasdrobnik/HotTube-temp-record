@@ -275,8 +275,8 @@ export function makeAmbient(series, manualPts, constTa) {
 
 /* ===== Chladnutí ===== */
 /** Newton s proměnným okolím: dT/dt = −k·f(t)·(T − Ta(t)); k z párů sousedních bodů (regrese přes počátek). */
-export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFactor, filt = [] }) {
-  const Rc = { cool: true, thr, ok: false, amb };
+export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFactor, filt = [], horizonH = 1 }) {
+  const Rc = { cool: true, thr, ok: false, amb, horizonH };
   const nearF = (a, b) => nearFilt(filt, a, b), inF = t => inFilt(filt, t);
   let C = pts.filter(p => p.t >= coolStart); const anchor = pts.filter(p => p.t <= coolStart).pop();
   if (anchor && (!C.length || C[0].t !== anchor.t)) C = [anchor, ...C];
@@ -322,6 +322,7 @@ export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFa
   };
   Rc.sim = tEnd => sim(Rc.k, last.t, last.T, tEnd).path;
   Rc.rateNow = -Rc.k * (last.T - amb(last.t)); Rc.in1h = sim(Rc.k, last.t, last.T, last.t + H).T;
+  Rc.inH = horizonH === 1 ? Rc.in1h : sim(Rc.k, last.t, last.T, last.t + horizonH * H).T;
   if (!Rc.below) {
     const r = sim(Rc.k, last.t, last.T, last.t + 48 * H, thr);
     if (!r.hit) Rc.in48h = r.T; // do 48 h hranice nehrozí
