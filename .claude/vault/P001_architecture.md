@@ -18,7 +18,8 @@ Static GitHub Pages site (vanilla ES modules, no build, no runtime deps). UI in 
 - CSP meta: connect-src only api.github.com + api.open-meteo.com; no inline styles/scripts.
 - Cooling threshold default is **4 °C** = freeze risk of water in filtration (user-confirmed), not 37.
 - Layout: CSS grid 1/2/3/4 columns at 760/1280/1900 px, header/alert/tiles/details/chart span full width. Chart has range (Auto/3/6/12/24 h/Vše) and forward horizon (+6 h/+12 h/+1 d/+3 d/custom x h|d, max 14 d, extrapolates trend/prediction) and per-series visibility toggles in a collapsible menu, stored per device in `hottube.ui`.
-- Tests: `node --test test/*.test.js` (33 tests incl. SPEC 6.5 reference values).
+- Chart: date under time axis, hover tooltip (temp, date/time, trend, prediction) via `buildChart().info(t)`.
+- Tests: `node --test test/*.test.js` (36 tests incl. SPEC 6.5 reference values).
 
 ## Related Topics
 

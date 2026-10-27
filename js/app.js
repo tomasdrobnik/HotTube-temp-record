@@ -3,7 +3,7 @@ import * as A from './analysis.js';
 import { H, MIN, CONFIG, hmOf } from './analysis.js';
 import { Store, newId, REPO_KEY, DEFAULT_REPO } from './storage.js';
 import { getWeather, loadCache, REFRESH_MS } from './weather.js';
-import { chartSvg } from './chart.js';
+import { buildChart } from './chart.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -222,11 +222,48 @@ function addStoke(d, t) {
 }
 
 /* ===== graf ===== */
+let chartCtx = null;
+function hideTip() { $('tip').hidden = true; const g = $('hv'); if (g) g.setAttribute('visibility', 'hidden'); }
+function tipHtml(i) {
+  const p = A.pragueParts(i.t), r = [];
+  r.push(`<b>${p.d}. ${p.mo}. ${p.y} · ${fmt(i.t)}</b>`);
+  if (i.T != null) r.push(`${i.kind === 'predikce' ? 'Predikce' : 'Teplota'}: <b>${nf(i.T)} °C</b>${i.kind === 'měřeno' ? ` <span class="small">(${i.src}${i.flags.length ? ', ' + i.flags.join(', ') : ''})</span>` : ''}`);
+  else r.push('<span class="small">Mimo změřená data a bez predikce (zapni „trend / predikce“).</span>');
+  const tr = i.trend;
+  if (tr) {
+    const rate = tr.rate != null ? `${tr.rate >= 0 ? '+' : '−'}${nf(Math.abs(tr.rate))} °C/h` : '–';
+    r.push(`Trend: ${rate}${tr.value != null ? ` · na trendu ${nf(tr.value)} °C (${tr.dev >= 0 ? '+' : ''}${nf(tr.dev)})` : ''}`);
+  }
+  const pr = i.pred;
+  if (pr) {
+    if (pr.in1h != null) r.push(`Predikce: ${pr.label} ${nf(pr.in1h)} °C`);
+    if (pr.eta) r.push(`Predikce: natopeno ${fmtD(pr.eta, i.t)}`);
+    if (pr.tThr) r.push(`Predikce: pod hranicí ${fmtD(pr.tThr, i.t)}`);
+  }
+  if (i.amb != null) r.push(`<span class="small">okolí ${nf(i.amb)} °C</span>`);
+  return r.map(x => `<div>${x}</div>`).join('');
+}
+function onChartMove(e) {
+  if (!chartCtx || !chartCtx.geom) return;
+  const svg = $('chart').querySelector('svg'); if (!svg) return;
+  const rc = svg.getBoundingClientRect(), g = chartCtx.geom, sc = rc.width / g.W, px = (e.clientX - rc.left) / sc;
+  if (px < g.L || px > g.L + g.iw) return hideTip();
+  const tH = g.x0 + (px - g.L) / g.iw * (g.x1 - g.x0); if (!isFinite(tH)) return hideTip();
+  const i = chartCtx.info(tH); if (!i) return hideTip();
+  const hv = $('hv'), tip = $('tip');
+  hv.setAttribute('visibility', 'visible'); $('hv-line').setAttribute('x1', i.sx); $('hv-line').setAttribute('x2', i.sx);
+  const dot = $('hv-dot'); if (i.sy != null) { dot.setAttribute('cx', i.sx); dot.setAttribute('cy', i.sy); dot.setAttribute('visibility', 'visible'); } else dot.setAttribute('visibility', 'hidden');
+  tip.innerHTML = tipHtml(i); tip.hidden = false;
+  const wr = $('chart').parentElement.getBoundingClientRect(), x = e.clientX - wr.left;
+  let left = x + 14; if (left + tip.offsetWidth > wr.width) left = Math.max(0, x - tip.offsetWidth - 14);
+  tip.style.left = left + 'px'; tip.style.top = '6px';
+}
 function renderChart() {
-  const open = $('secChart').open; if (!open || !D || !D.pts.length) { $('chart').innerHTML = D && D.pts.length ? '' : '<span class="small">Žádná data.</span>'; return; }
+  const open = $('secChart').open; if (!open || !D || !D.pts.length) { chartCtx = null; $('chart').innerHTML = D && D.pts.length ? '' : '<span class="small">Žádná data.</span>'; return; }
   const cs = getComputedStyle(document.documentElement), c = {};
-  for (const k of ['line', 'muted', 'water', 'heat', 'bad', 'pause', 'panel']) c[k] = cs.getPropertyValue('--' + k).trim();
-  $('chart').innerHTML = chartSvg({ W: $('chart').clientWidth, rangeH: ui.range === 'auto' ? undefined : +ui.range, aheadMs: (ui.ahead || 0) * H, show: ui.show, pts: D.pts, mode: D.cool ? 'cool' : 'heat', R: D.R, C: D.C, filt: D.filt, amb: D.amb, target: D.ss.target, thr: D.ss.coolThr, coolStart: D.ss.coolStart, colors: c });
+  for (const k of ['line', 'muted', 'water', 'heat', 'bad', 'pause', 'panel', 'fg']) c[k] = cs.getPropertyValue('--' + k).trim();
+  chartCtx = buildChart({ W: $('chart').clientWidth, rangeH: ui.range === 'auto' ? undefined : +ui.range, aheadMs: (ui.ahead || 0) * H, show: ui.show, pts: D.pts, mode: D.cool ? 'cool' : 'heat', R: D.R, C: D.C, filt: D.filt, amb: D.amb, target: D.ss.target, thr: D.ss.coolThr, coolStart: D.ss.coolStart, colors: c });
+  $('chart').innerHTML = chartCtx.svg; hideTip();
   $('legend').innerHTML = '<span><i class="lg-water"></i>čidlo</span><span><i class="lg-heat"></i>ruční zápis</span><span><i class="lg-water dash"></i>' + (D.cool ? 'predikce' : 'trend') + '</span><span>modré pruhy = filtrace</span>' + (D.cool ? '<span>šedá zóna = od konce natápění</span>' : '<span>šedé pruhy = pauzy ohřevu</span>');
 }
 
@@ -434,6 +471,7 @@ function bind() {
     const rows = store.state.manual.filter(m => !m.deleted).sort((a, b) => a.t - b.t).map(m => [new Date(m.t).toISOString(), `${A.pragueParts(m.t).d}.${A.pragueParts(m.t).mo}.${A.pragueParts(m.t).y} ${fmt(m.t)}`, m.T, m.amb ?? '', m.ambSrc ?? '', m.mix ? 1 : 0, m.bath ? 1 : 0, m.stoke ? 1 : 0, q(m.note)].join(';'));
     download(`hottube-zapisy-${stamp()}.csv`, 'text/csv', ['iso_utc;cas_praha;teplota_c;okoli_c;okoli_zdroj;zamichano;koupani;prilozeno;poznamka', ...rows].join('\n') + '\n');
   });
+  $('chart').addEventListener('pointermove', onChartMove); $('chart').addEventListener('pointerdown', onChartMove); $('chart').addEventListener('pointerleave', hideTip);
   // graf: rozsah a viditelnost
   document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => { ui.range = b.dataset.range; saveUi(); syncChartCtl(); renderChart(); }));
   document.querySelectorAll('[data-ahead]').forEach(b => b.addEventListener('click', () => { ui.ahead = +b.dataset.ahead; saveUi(); syncChartCtl(); renderChart(); }));

@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as A from '../js/analysis.js';
+import { buildChart } from '../js/chart.js';
+import { MANUAL, FILT, NOW, allPts, fixtureCsv, hourlySeries } from './helpers.js';
+
+const colors = { line: '#ddd', muted: '#888', water: '#06c', heat: '#c60', bad: '#c00', pause: '#eee', panel: '#fff', fg: '#000' };
+const amb = A.makeAmbient(hourlySeries(), MANUAL);
+
+test('graf: datum pod osou času, každý den jednou; hover prvky v SVG', () => {
+  const pts = allPts();
+  const C = A.analyzeCool(pts, { coolStart: MANUAL[1].t, amb, thr: 4, F: 1.5, filt: FILT });
+  const { svg } = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, rangeH: 0 });
+  const dates = [...svg.matchAll(/>(\d+)\. (\d+)\.<\/text>/g)].map(m => m[0].slice(1, -7));
+  assert.deepEqual(dates, ['25. 10.', '26. 10.']);
+  assert.match(svg, /id="hv-line"/); assert.match(svg, /id="hv-dot"/);
+});
+
+test('hover ohřev: změřený bod má trend a ETA, za posledním bodem predikce', () => {
+  const pts = A.mergePts(A.parseAllCSV(fixtureCsv(), NOW).pts.filter(p => p.t < A.zonedToEpoch(2026, 10, 26)), MANUAL.slice(0, 1));
+  const R = A.analyze(pts, { target: 40 });
+  const ch = buildChart({ W: 900, pts, mode: 'heat', R, filt: FILT, amb, target: 40, thr: 4, colors });
+  const mid = pts[pts.length - 10].t, i = ch.info(mid);
+  assert.equal(i.kind, 'měřeno'); assert.equal(i.T, pts[pts.length - 10].T); assert.ok(i.trend.rate > 4 && i.trend.rate < 6); assert.ok(i.pred.eta);
+  const f = ch.info(R.eta - 10 * A.MIN);
+  assert.equal(f.kind, 'predikce'); assert.ok(f.T > 38 && f.T < 40.5);
+  assert.equal(ch.info(ch.geom.x1 + A.H), null);
+});
+
+test('hover pokles: měřený bod má rychlost poklesu a predikci za 1 h, za koncem dat křivka', () => {
+  const pts = allPts();
+  const C = A.analyzeCool(pts, { coolStart: MANUAL[1].t, amb, thr: 4, F: 1.5, filt: FILT });
+  const ch = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, aheadMs: 24 * A.H });
+  const i = ch.info(pts.at(-1).t - 30 * A.MIN);
+  assert.equal(i.kind, 'měřeno'); assert.ok(i.trend.rate < 0); assert.ok(i.pred.in1h < i.T);
+  const f = ch.info(pts.at(-1).t + 6 * A.H);
+  assert.equal(f.kind, 'predikce'); assert.ok(f.T < pts.at(-1).T); assert.ok(f.trend.rate < 0);
+});

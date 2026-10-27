@@ -1,18 +1,19 @@
 /* SVG graf jako řetězec (bez DOM, barvy dodá volající z CSS proměnných). Heat i cool režim. */
-import { MIN, H, hmOf, dayStart, filtWins, pragueParts } from './analysis.js';
+import { MIN, H, hmOf, dayStart, filtWins, inFilt, pragueParts } from './analysis.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const tickLabel = (t, spanMin) => { const p = pragueParts(t); return spanMin > 36 * 60 && p.h === 0 && p.mi === 0 ? `${p.d}.${p.mo}.` : hmOf(t); };
+const dayKey = t => { const p = pragueParts(t); return p.y * 10000 + p.mo * 100 + p.d; };
 const nf = (v, d = 1) => v.toLocaleString('cs-CZ', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 const ALL_ON = { sensor: true, manual: true, model: true, filt: true, zones: true, amb: true, ref: true };
-/** o: {aheadMs (>0 = osa končí o tolik za posledním bodem, trend/predikce se extrapoluje), rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → SVG string */
-export function chartSvg(o) {
+/** o: {aheadMs (>0 = osa končí o tolik za posledním bodem, trend/predikce se extrapoluje), rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → {svg, info(t), geom} */
+export const chartSvg = o => buildChart(o).svg;
+export function buildChart(o) {
   const { pts, mode, R, C, filt, amb, colors: c } = o;
   const show = { ...ALL_ON, ...(o.show || {}) };
-  if (!pts.length) return '';
+  if (!pts.length) return { svg: '', info: () => null, geom: null };
   const W = Math.max(300, o.W || 600), Hh = Math.round(Math.max(240, Math.min(560, W * (W > 700 ? 0.36 : 0.62))));
-  const L = 40, Rr = 12, T = 14, B = 28, iw = W - L - Rr, ih = Hh - T - B;
+  const L = 40, Rr = 12, T = 14, B = 42, iw = W - L - Rr, ih = Hh - T - B;
   const last = pts[pts.length - 1];
   let x0, x1;
   if (mode === 'cool') {
@@ -41,7 +42,13 @@ export function chartSvg(o) {
   const span = (x1 - x0) / MIN, steps = [10, 15, 30, 60, 120, 180, 240, 360];
   const st = steps.find(m => span / m <= iw / 56) || 720;
   let tt = dayStart(x0); while (tt < x0) tt += st * MIN;
-  for (; tt <= x1; tt += st * MIN) s += `<line x1="${X(tt)}" x2="${X(tt)}" y1="${T}" y2="${T + ih}" stroke="${c.line}" stroke-dasharray="2 3"/><text x="${X(tt)}" y="${T + ih + 17}" text-anchor="middle" fill="${c.muted}">${tickLabel(tt, span)}</text>`;
+  let prevDay = null;
+  for (; tt <= x1; tt += st * MIN) {
+    const p = pragueParts(tt), mid = p.h === 0 && p.mi === 0, dk = dayKey(tt), tx = X(tt);
+    s += mid ? `<line x1="${tx}" x2="${tx}" y1="${T}" y2="${T + ih}" stroke="${c.muted}" stroke-width="1"/>` : `<line x1="${tx}" x2="${tx}" y1="${T}" y2="${T + ih}" stroke="${c.line}" stroke-dasharray="2 3"/>`;
+    s += `<text x="${tx}" y="${T + ih + 15}" text-anchor="middle" fill="${c.muted}">${hmOf(tt)}</text>`;
+    if (dk !== prevDay) { prevDay = dk; s += `<text x="${tx}" y="${T + ih + 31}" text-anchor="${tx < L + 26 ? 'start' : 'middle'}" fill="${c.fg || c.muted}" font-weight="600">${p.d}. ${p.mo}.</text>`; }
+  }
   s += `<text x="${L - 6}" y="${T - 3}" text-anchor="end" fill="${c.muted}">°C</text>`;
   if (show.filt) for (const w of filtWins(filt, x0, x1)) { const a = Math.max(w.a, x0), b = Math.min(w.b, x1); s += `<rect x="${X(a)}" y="${T}" width="${Math.max(1, X(b) - X(a))}" height="${ih}" fill="${c.water}" opacity=".16"><title>filtrace ${hmOf(w.a)}–${hmOf(w.b)}</title></rect>`; }
   if (mode === 'heat' && show.zones && R && R.pauses) for (const p of R.pauses.done.concat(R.pauses.ongoing ? [R.pauses.ongoing] : [])) s += `<rect x="${X(p.a)}" y="${T}" width="${Math.max(1, X(p.b) - X(p.a))}" height="${ih}" fill="${c.pause}"><title>pauza ohřevu ${hmOf(p.a)}–${hmOf(p.b)}</title></rect>`;
@@ -77,5 +84,44 @@ export function chartSvg(o) {
     if (show.model && R.eta) mark(R.eta, 'ETA ' + hmOf(R.eta), c.heat, false, 0);
     if (R.reached) mark(R.reached, 'natopeno ' + hmOf(R.reached), c.heat, false, 0);
   }
-  return s + '</svg>';
+  /* ===== hover ===== */
+  const fit = mode === 'heat' && R && R.fit ? R.fit : null;
+  const heatRate = mode === 'heat' && R ? (fit ? fit.b : R.rate) : null;
+  const trendAt = t => fit ? fit.pred((t - fit.t0) / H) : (heatRate != null && R.last ? R.last.T + heatRate * (t - R.last.t) / H : null);
+  const k = mode === 'cool' && C && C.fit && C.k > 0 ? C.k : null;
+  const fac = t => inFilt(filt, t) ? (C.F || 1) : 1;
+  const rateCool = (t, Tv) => k ? -k * fac(t) * (Tv - amb(t)) : null;
+  const project = (t, Tv, hours) => { if (!k) return null; let q = t, TT = Tv; const end = t + hours * H; while (q < end) { const dt = Math.min(5 * MIN, end - q), tm = q + dt / 2; TT += -k * fac(tm) * (TT - amb(tm)) * dt / H; q += dt; } return TT; };
+  const simAt = t => { if (!simPath) return null; for (let i = 1; i < simPath.length; i++) if (simPath[i][0] >= t) { const a = simPath[i - 1], b = simPath[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return simPath[simPath.length - 1][1]; };
+  const nearest = t => {
+    if (!vis.length) return null; let lo = 0, hi = vis.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (vis[m].t <= t) lo = m; else hi = m; }
+    return Math.abs(vis[lo].t - t) <= Math.abs(vis[hi].t - t) ? vis[lo] : vis[hi];
+  };
+  const clampY = v => Y(Math.max(y0, Math.min(y1, v)));
+  const info = t => {
+    if (t <= last.t + 5 * MIN) { // změřený bod
+      const p = nearest(t); if (!p) return null;
+      const o2 = { t: p.t, T: p.T, kind: 'měřeno', src: p.src === 'man' ? 'ruční zápis' : 'čidlo', flags: [p.stoke && 'přiloženo', p.mix && 'zamícháno', p.bath && 'koupání'].filter(Boolean), sx: X(p.t), sy: clampY(p.T), amb: amb ? amb(p.t) : null };
+      if (mode === 'heat') {
+        const tv = trendAt(p.t);
+        if (tv != null) o2.trend = { rate: heatRate, value: tv, dev: p.T - tv };
+        o2.pred = { eta: R && R.eta ? R.eta : null, in1h: tv != null ? trendAt(p.t + H) : null, label: 'za 1 h podle trendu' };
+      } else {
+        o2.trend = { rate: rateCool(p.t, p.T) };
+        o2.pred = { in1h: project(p.t, p.T, 1), label: 'za 1 h podle křivky', tThr: C && C.tThr ? C.tThr : null };
+      }
+      return o2;
+    }
+    if (t > x1) return null;
+    const Tp = mode === 'cool' ? simAt(t) : (show.model ? trendAt(t) : null);
+    if (Tp == null) return { t, kind: 'bez dat', sx: X(t), sy: null, amb: amb ? amb(t) : null };
+    return {
+      t, T: Tp, kind: 'predikce', flags: [], sx: X(t), sy: clampY(Tp), amb: amb ? amb(t) : null,
+      trend: { rate: mode === 'cool' ? rateCool(t, Tp) : heatRate },
+      pred: mode === 'cool' ? { tThr: C && C.tThr ? C.tThr : null } : { eta: R && R.eta ? R.eta : null },
+    };
+  };
+  s += `<g id="hv" visibility="hidden"><line id="hv-line" x1="0" x2="0" y1="${T}" y2="${T + ih}" stroke="${c.fg || c.muted}" stroke-width="1"/><circle id="hv-dot" cx="0" cy="0" r="6" fill="none" stroke="${c.fg || c.muted}" stroke-width="2"/></g>`;
+  return { svg: s + '</svg>', info, geom: { W, Hh, L, iw, x0, x1 } };
 }
