@@ -252,7 +252,7 @@ function tipHtml(i) {
     if (pr.eta) r.push(`Predikce: natopeno ${fmtD(pr.eta, i.t)}`);
     if (pr.tThr) r.push(`Predikce: pod hranicí ${fmtD(pr.tThr, i.t)}`);
   }
-  if (i.amb != null) r.push(`<span class="small">okolí ${nf(i.amb)} °C</span>`);
+  if (i.amb != null) r.push(i.amb <= 0 ? `<span class="frost">okolí ${nf(i.amb)} °C · mráz</span>` : `<span class="small">okolí ${nf(i.amb)} °C</span>`);
   return r.map(x => `<div>${x}</div>`).join('');
 }
 function onChartMove(e) {
@@ -273,10 +273,10 @@ function onChartMove(e) {
 function renderChart() {
   const open = $('secChart').open; if (!open || !D || !D.pts.length) { chartCtx = null; $('chart').innerHTML = D && D.pts.length ? '' : '<span class="small">Žádná data.</span>'; return; }
   const cs = getComputedStyle(document.documentElement), c = {};
-  for (const k of ['line', 'muted', 'water', 'heat', 'bad', 'pause', 'panel', 'fg']) c[k] = cs.getPropertyValue('--' + k).trim();
+  for (const k of ['line', 'muted', 'water', 'heat', 'bad', 'pause', 'panel', 'fg', 'frost']) c[k] = cs.getPropertyValue('--' + k).trim();
   chartCtx = buildChart({ W: $('chart').clientWidth, rangeH: ui.range === 'auto' ? undefined : +ui.range, aheadMs: (ui.ahead || 0) * H, horizonH: ui.coolHorizon || 1, horizonLabel: hLabel(ui.coolHorizon || 1), show: ui.show, pts: D.pts, mode: D.cool ? 'cool' : 'heat', R: D.R, C: D.C, filt: D.filt, amb: D.amb, target: D.ss.target, thr: D.ss.coolThr, coolStart: D.ss.coolStart, colors: c });
   $('chart').innerHTML = chartCtx.svg; hideTip();
-  $('legend').innerHTML = '<span><i class="lg-water"></i>čidlo</span><span><i class="lg-heat"></i>ruční zápis</span><span><i class="lg-water dash"></i>' + (D.cool ? 'predikce' : 'trend') + '</span><span>modré pruhy = filtrace</span>' + (D.cool ? '<span>šedá zóna = od konce natápění</span>' : '<span>šedé pruhy = pauzy ohřevu</span>');
+  $('legend').innerHTML = '<span><i class="lg-water"></i>čidlo</span><span><i class="lg-heat"></i>ruční zápis</span><span><i class="lg-frost"></i>okolí ≤ 0 °C</span><span><i class="lg-water dash"></i>' + (D.cool ? 'predikce' : 'trend') + '</span><span>modré pruhy = filtrace</span>' + (D.cool ? '<span>šedá zóna = od konce natápění</span>' : '<span>šedé pruhy = pauzy ohřevu</span>');
 }
 
 function syncHorizon() {
@@ -365,7 +365,7 @@ function renderStats() {
   c.push(card('Pokles vody za den', S.dropPerDay != null ? '−' + nf(S.dropPerDay) + ' °C/den' : dash,
     S.dropPerDay != null ? `při Ø okolí ${nf(S.coolAmb)} °C (Ø rozdíl voda–okolí ${nf(S.coolDiff)} °C)${S.dropPer10 != null ? ` · na 10 °C rozdílu −${nf(S.dropPer10)} °C/den` : ''} · bez filtrace a míchání` : 'zatím chybí chladnutí (≥ 2 body)'));
   c.push(card('Čas nad cílem', nf(S.aboveTargetH) + ' h', `teplota ≥ ${nt(tgt)} °C`));
-  c.push(card('Okolí v období', S.ambAvg != null ? 'Ø ' + nf(S.ambAvg) + ' °C' : dash, S.ambMin != null ? `min ${nf(S.ambMin)} °C · ${D.amb.fallback ? 'bez předpovědi' : 'předpověď / cache'}` : ''));
+  c.push(card('Okolí v období', S.ambAvg != null ? 'Ø ' + nf(S.ambAvg) + ' °C' : dash, S.ambMin != null ? `min ${nf(S.ambMin)} °C · ${nf(S.ambFrostH, 0)} h ≤ 0 °C · ${D.amb.fallback ? 'bez předpovědi' : 'předpověď / cache'}` : ''));
   c.push(card('Přiložení a zápisy', `${S.stoke}×`, `${S.manual} ručních zápisů · ${S.count} bodů`));
   c.push(card('Sledované období', nf(S.periodH / 24, 1) + ' d', `${fmtD(S.from, 0)} – ${fmtD(S.to, 0)}`));
   box.innerHTML = c.join('');

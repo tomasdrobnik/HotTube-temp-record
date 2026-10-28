@@ -40,3 +40,14 @@ test('hover pokles: měřený bod má rychlost poklesu a predikci za 1 h, za kon
   const f = ch.info(pts.at(-1).t + 6 * A.H);
   assert.equal(f.kind, 'predikce'); assert.ok(f.T < pts.at(-1).T); assert.ok(f.trend.rate < 0);
 });
+
+test('okolí ≤ 0 °C je zvýrazněno (úsek, body, čára 0 °C); při kladném okolí nic', () => {
+  const pts = allPts();
+  const C = A.analyzeCool(pts, { coolStart: MANUAL[1].t, amb, thr: 4, F: 1.5, filt: FILT });
+  const base = { W: 900, pts, mode: 'cool', C, filt: FILT, thr: 4, target: 40, coolStart: MANUAL[1].t, colors: { ...colors, frost: '#0aa' }, aheadMs: 24 * A.H };
+  const { svg } = buildChart({ ...base, amb });
+  assert.match(svg, /okolí ≤ 0 °C \(mráz\)/); assert.match(svg, /stroke="#0aa" stroke-width="3"/); assert.match(svg, />0 °C</);
+  const warm = buildChart({ ...base, amb: A.makeAmbient([], [], 8) }).svg;
+  assert.doesNotMatch(warm, /mráz/);
+  assert.doesNotMatch(buildChart({ ...base, amb, show: { amb: false } }).svg, /mráz/);
+});

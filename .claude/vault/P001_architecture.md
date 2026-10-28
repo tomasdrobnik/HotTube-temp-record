@@ -24,7 +24,8 @@ Static GitHub Pages site (vanilla ES modules, no build, no runtime deps). UI in 
 - Dates: tiles/chip/summary use `fmtN` (adds "(d. m.)" when not today). Details show "Poslední natopení" + time since (d h).
 - Filtration factor: `filt.auto` (default true) → `analyzeCool` uses `Fest` estimated from current data, else manual `filt.factor`; typing a factor turns auto off.
 - Statistics section: pure `computeStats(sessions)` over current + archive (`archive[].data`), scope Vše/Aktuální; cooling drop/day excludes mix/bath/filtration pairs.
-- Tests: `node --test test/*.test.js` (39 tests incl. SPEC 6.5 reference values).
+- Ambient ≤ 0 °C is highlighted (--frost): thick curve segments, hourly dots, dotted 0 °C line, "mráz" in hover, hours ≤ 0 in stats.
+- Tests: `node --test test/*.test.js` (40 tests incl. SPEC 6.5 reference values).
 
 ## Related Topics
 

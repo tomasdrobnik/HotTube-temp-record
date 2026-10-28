@@ -427,6 +427,6 @@ export function computeStats(sessions, { filt = [], amb = null, maxGapMin = 60 }
     S.coolAmb = ambNum / dropDen; S.coolDiff = diffNum / dropDen; S.coolPairs = coolPairs;
     S.dropPer10 = S.coolDiff > 0.5 ? S.dropPerDay / S.coolDiff * 10 : null; // °C/den při rozdílu voda–okolí 10 °C
   }
-  if (amb && per.length) { let sum = 0, n = 0, lo = Infinity; for (const [a, b] of per) for (let t = a; t <= b; t += H) { const v = amb(t); sum += v; n++; if (v < lo) lo = v; } S.ambAvg = n ? sum / n : null; S.ambMin = n ? lo : null; }
+  if (amb && per.length) { let sum = 0, n = 0, lo = Infinity, fr = 0; for (const [a, b] of per) for (let t = a; t <= b; t += H) { const v = amb(t); sum += v; n++; if (v < lo) lo = v; if (v <= 0) fr++; } S.ambAvg = n ? sum / n : null; S.ambMin = n ? lo : null; S.ambFrostH = fr; }
   return S;
 }

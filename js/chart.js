@@ -29,7 +29,7 @@ export function buildChart(o) {
   if (o.aheadMs > 0) x1 = last.t + o.aheadMs;
   if (x1 - x0 < 30 * MIN) x1 = x0 + 30 * MIN;
   const vis = pts.filter(p => p.t >= x0 && (p.src === 'man' ? show.manual : show.sensor));
-  const ambS = []; if (amb && show.amb) for (let i = 0; i <= 48; i++) { const t = x0 + (x1 - x0) * i / 48; ambS.push([t, amb(t)]); }
+  const ambS = []; if (amb && show.amb) { const n = Math.max(48, Math.min(400, Math.round((x1 - x0) / (30 * MIN)))); for (let i = 0; i <= n; i++) { const t = x0 + (x1 - x0) * i / n; ambS.push([t, amb(t)]); } }
   const refY = mode === 'cool' ? o.thr : o.target;
   const simAtEarly = t => { if (!simPath) return null; for (let i = 1; i < simPath.length; i++) if (simPath[i][0] >= t) { const a = simPath[i - 1], b = simPath[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return simPath[simPath.length - 1][1]; };
   const simPath = mode === 'cool' && show.model && C && C.fit && C.k > 0 && C.sim ? C.sim(x1) : null;
@@ -57,6 +57,22 @@ export function buildChart(o) {
   const ry = Y(refY), rc = mode === 'cool' ? c.bad : c.heat;
   if (show.ref) s += `<line x1="${L}" x2="${L + iw}" y1="${ry}" y2="${ry}" stroke="${rc}" stroke-width="1.2" stroke-dasharray="6 4"/><text x="${L + 4}" y="${ry + (mode === 'cool' ? 14 : -4)}" fill="${rc}">${mode === 'cool' ? 'hranice' : 'cíl'} ${nf(refY, refY % 1 ? 1 : 0)} °C</text>`;
   if (ambS.length) s += `<polyline points="${ambS.map(a => X(a[0]) + ',' + Y(a[1])).join(' ')}" fill="none" stroke="${c.muted}" stroke-width="1.3" stroke-dasharray="1 3"/>`;
+  if (ambS.length) { // mráz: okolí ≤ 0 °C zvýrazněno (úseky křivky, hodinové body, čára 0 °C)
+    const fc = c.frost || c.water, runs = []; let cur = null;
+    for (let i = 0; i < ambS.length; i++) {
+      const [t, v] = ambS[i], frost = v <= 0;
+      if (frost && !cur) { cur = []; if (i > 0 && ambS[i - 1][1] > 0) { const [pt, pv] = ambS[i - 1]; cur.push([pt + (t - pt) * pv / (pv - v), 0]); } }
+      if (frost) cur.push([t, v]);
+      if (!frost && cur) { const [pt, pv] = ambS[i - 1]; cur.push([pt + (t - pt) * pv / (pv - v), 0]); runs.push(cur); cur = null; }
+    }
+    if (cur) runs.push(cur);
+    if (y0 < 0 && y1 > 0) s += `<line x1="${L}" x2="${L + iw}" y1="${Y(0)}" y2="${Y(0)}" stroke="${fc}" stroke-width="1" stroke-dasharray="1 4" opacity=".8"/><text x="${L + iw - 3}" y="${Y(0) - 3}" text-anchor="end" fill="${fc}">0 °C</text>`;
+    for (const r of runs) {
+      if (r.length > 1) s += `<polyline points="${r.map(q => X(q[0]) + ',' + Y(q[1])).join(' ')}" fill="none" stroke="${fc}" stroke-width="3" stroke-linecap="round"><title>okolí ≤ 0 °C (mráz) ${hmOf(r[0][0])}–${hmOf(r[r.length - 1][0])}</title></polyline>`;
+    }
+    const step = Math.max(1, Math.ceil(((x1 - x0) / H) / 40)) * H; // nejvýš ~40 bodů
+    for (let t = Math.ceil(x0 / step) * step; t <= x1; t += step) { const v = amb(t); if (v <= 0) s += `<circle cx="${X(t)}" cy="${Y(v)}" r="3.5" fill="${fc}" stroke="${c.panel}" stroke-width="1"><title>${hmOf(t)} okolí ${nf(v)} °C (mráz)</title></circle>`; }
+  }
   if (mode === 'heat' && show.model && R && R.fit && R.eta) { // trend: přímka z okna až do ETA
     const f = R.fit, tA = R.win[0].t, tB = o.aheadMs > 0 ? x1 : Math.min(R.eta, x1);
     const yy = t => f.pred((t - f.t0) / H), yc = t => Y(Math.max(y0, Math.min(y1, yy(t))));
