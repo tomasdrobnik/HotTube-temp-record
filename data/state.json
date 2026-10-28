@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "gen": 0,
-  "updated": 1793167330827,
+  "updated": 1793167632594,
   "updatedBy": "iPhone",
   "session": {
     "mode": "cool",
@@ -77,7 +77,7 @@
     "log": []
   },
   "filt": {
-    "factor": 1.6,
+    "factor": 3,
     "windows": [
       {
         "h": 1,
