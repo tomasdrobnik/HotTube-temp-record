@@ -171,6 +171,7 @@
     </form>
     <div class="row">
       <label>Faktor zrychlení chladnutí<input id="fiFactor" class="w5" inputmode="decimal"></label>
+      <label class="chk"><input type="checkbox" id="fiAuto"> automaticky z aktuálních dat</label>
       <span class="small" id="fiEst"></span>
     </div>
     <span class="small">Okno filtrace + 15 min: varování se potlačí a páry bodů se nepoužijí pro odhad k. Časy jsou Europe/Prague, platí každý den.</span>
@@ -180,6 +181,17 @@
 <details class="sec" id="secMan" data-key="man">
   <summary><h2>Ruční zápisy</h2><span class="sum" id="sumMan"></span></summary>
   <div class="body"><table><thead><tr><th>Čas</th><th>°C</th><th>Okolí</th><th>Značky</th><th></th></tr></thead><tbody id="manList"></tbody></table></div>
+</details>
+
+<details class="sec full" id="secStats" data-key="stats">
+  <summary><h2>Statistiky</h2><span class="sum" id="sumStats"></span></summary>
+  <div class="body">
+    <span class="seg" role="group" aria-label="Období statistik">
+      <button type="button" data-sc="all" aria-pressed="true">Vše vč. archivu</button><button type="button" data-sc="cur" aria-pressed="false">Aktuální ohřev</button>
+    </span>
+    <div id="statsBox" class="stats"></div>
+    <span class="small" id="statsNote"></span>
+  </div>
 </details>
 
 <details class="sec" id="secImport" data-key="import">

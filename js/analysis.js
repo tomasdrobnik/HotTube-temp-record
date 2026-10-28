@@ -275,7 +275,7 @@ export function makeAmbient(series, manualPts, constTa) {
 
 /* ===== Chladnutí ===== */
 /** Newton s proměnným okolím: dT/dt = −k·f(t)·(T − Ta(t)); k z párů sousedních bodů (regrese přes počátek). */
-export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFactor, filt = [], horizonH = 1 }) {
+export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFactor, filt = [], horizonH = 1, autoF = false }) {
   const Rc = { cool: true, thr, ok: false, amb, horizonH };
   const nearF = (a, b) => nearFilt(filt, a, b), inF = t => inFilt(filt, t);
   let C = pts.filter(p => p.t >= coolStart); const anchor = pts.filter(p => p.t <= coolStart).pop();
@@ -307,7 +307,9 @@ export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFa
     return { k, m, sd: m > 1 ? Math.sqrt(sse / (m - 1)) : 0, se: m > 1 && sxx > 0 ? Math.sqrt(sse / (m - 1) / sxx) : null };
   };
   let f = kfit(D, 'norm'); if (f.m < 1) f = kfit(D); f.n = D.length; Rc.fit = f; Rc.k = f.k;
-  const ff = kfit(D, 'filt'); Rc.Fest = ff.m >= 1 && f.k > 0.0005 && ff.k > 0 ? ff.k / f.k : null; Rc.F = F;
+  const ff = kfit(D, 'filt'); Rc.Fest = ff.m >= 1 && f.k > 0.0005 && ff.k > 0 ? ff.k / f.k : null;
+  const useAuto = autoF && Rc.Fest != null && Rc.Fest >= 1 && Rc.Fest <= 10; // faktor primárně z aktuálních dat, jinak ručně zadaný
+  const Fuse = useAuto ? Rc.Fest : F; Rc.F = Fuse; Rc.Fmanual = F; Rc.Fsrc = useAuto ? 'data' : 'ručně';
   Rc.lastInFilt = nearF(C[C.length - 2].t, last.t);
   if (Rc.k <= 0.0005) { Rc.rising = true; Rc.msg = 'Teplota neklesá.'; return Rc; }
   const step = CONFIG.coolStepMin * MIN;
@@ -315,7 +317,7 @@ export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFa
     let t = t0, T = T0; const path = [[t, T]];
     while (t < tEnd) {
       const dt = Math.min(step, tEnd - t), tm = t + dt / 2;
-      T += -k * (inF(tm) ? F : 1) * (T - amb(tm)) * dt / H; t += dt; path.push([t, T]);
+      T += -k * (inF(tm) ? Fuse : 1) * (T - amb(tm)) * dt / H; t += dt; path.push([t, T]);
       if (stopBelow != null && T <= stopBelow) return { t, T, path, hit: true };
     }
     return { t, T, path, hit: false };
@@ -367,4 +369,64 @@ export function summarize(pts, { target, coolStart, k, now }) {
     max: max.T, maxAt: max.t, target, reachedAt: R.reached || null,
     endedAt: coolStart || null, k: k ?? null, count: pts.filter(p => p.src === 'man').length, closedAt: now,
   };
+}
+
+/* ===== Statistiky ===== */
+/** sessions: [{pts, coolStart|null, target, stokeCount}] (aktuální + archiv). filt: okna filtrace, amb: Ta(t).
+ *  Časově vážené průměry přeskakují mezery > maxGapMin (chybějící data). */
+export function computeStats(sessions, { filt = [], amb = null, maxGapMin = 60 } = {}) {
+  const S = { sessions: sessions.length, heatings: 0, reached: 0, count: 0 };
+  const all = []; let wSum = 0, wT = 0, aboveMs = 0, covMs = 0; const heatRates = [], toTarget = [], heatDur = [];
+  let dropNum = 0, dropDen = 0, diffNum = 0, ambNum = 0, coolPairs = 0, stoke = 0;
+  const range = [];
+  for (const ss of sessions) {
+    const P = ss.pts || []; if (!P.length) continue;
+    S.count += P.length; stoke += ss.stokeCount || 0; range.push([P[0].t, P[P.length - 1].t]);
+    for (const p of P) all.push(p);
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1], b = P[i], dt = b.t - a.t; if (dt <= 0 || dt > maxGapMin * MIN) continue;
+      wSum += dt; wT += dt * (a.T + b.T) / 2; covMs += dt;
+      if (ss.target != null && (a.T + b.T) / 2 >= ss.target) aboveMs += dt;
+    }
+    // natopení
+    const R = analyze(P, { target: ss.target ?? 40 });
+    if (R.start) {
+      const top = P.filter(p => p.t >= R.start.t && (ss.coolStart == null || p.t <= ss.coolStart)).reduce((m, p) => p.T > m.T ? p : m, R.start);
+      if (top.T - R.start.T >= 3) {
+        S.heatings++; const h = (top.t - R.start.t) / H; if (h > 0.25) { heatRates.push((top.T - R.start.T) / h); heatDur.push(h); }
+        if (R.reached) { S.reached++; toTarget.push((R.reached - R.start.t) / H); }
+      }
+    }
+    // chladnutí: sousední páry po konci natápění, bez skoků (zamíchání/koupání/filtrace)
+    if (ss.coolStart != null) {
+      const C = P.filter(p => p.t >= ss.coolStart);
+      for (let i = 1; i < C.length; i++) {
+        const a = C[i - 1], b = C[i], dt = b.t - a.t;
+        if (dt <= 0 || dt > 3 * H || b.mix || b.bath || nearFilt(filt, a.t, b.t)) continue;
+        const Ta = amb ? (amb(a.t) + amb(b.t)) / 2 : 0;
+        dropNum += a.T - b.T; dropDen += dt; diffNum += dt * ((a.T + b.T) / 2 - Ta); ambNum += dt * Ta; coolPairs++;
+      }
+    }
+  }
+  if (!all.length) return S;
+  const mx = all.reduce((m, p) => p.T > m.T ? p : m, all[0]), mn = all.reduce((m, p) => p.T < m.T ? p : m, all[0]);
+  S.max = mx; S.min = mn;
+  S.avg = wSum > 0 ? wT / wSum : null; S.coveredH = covMs / H; S.aboveTargetH = aboveMs / H;
+  const baths = all.filter(p => p.bath); S.baths = baths.length; S.bathAvg = baths.length ? baths.reduce((a, p) => a + p.T, 0) / baths.length : null;
+  S.manual = all.filter(p => p.src === 'man').length; S.stoke = stoke;
+  S.avgHeatRate = heatRates.length ? heatRates.reduce((a, b) => a + b, 0) / heatRates.length : null;
+  S.avgHeatH = heatDur.length ? heatDur.reduce((a, b) => a + b, 0) / heatDur.length : null;
+  S.avgToTargetH = toTarget.length ? toTarget.reduce((a, b) => a + b, 0) / toTarget.length : null;
+  // filtrace: sjednocení pokrytého období
+  const per = range.sort((a, b) => a[0] - b[0]).reduce((o, r) => { const l = o[o.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else o.push([...r]); return o; }, []);
+  let fMs = 0, spanMs = 0;
+  for (const [a, b] of per) { spanMs += b - a; for (const w of filtWins(filt, a, b)) fMs += Math.min(w.b, b) - Math.max(w.a, a); }
+  S.from = per[0][0]; S.to = per[per.length - 1][1]; S.periodH = spanMs / H; S.filtH = fMs / H; S.filtPerDayH = spanMs > 0 ? fMs / spanMs * 24 : null;
+  if (dropDen > 0) {
+    S.coolDays = dropDen / (24 * H); S.dropPerDay = dropNum / dropDen * 24 * H;
+    S.coolAmb = ambNum / dropDen; S.coolDiff = diffNum / dropDen; S.coolPairs = coolPairs;
+    S.dropPer10 = S.coolDiff > 0.5 ? S.dropPerDay / S.coolDiff * 10 : null; // °C/den při rozdílu voda–okolí 10 °C
+  }
+  if (amb && per.length) { let sum = 0, n = 0, lo = Infinity; for (const [a, b] of per) for (let t = a; t <= b; t += H) { const v = amb(t); sum += v; n++; if (v < lo) lo = v; } S.ambAvg = n ? sum / n : null; S.ambMin = n ? lo : null; }
+  return S;
 }

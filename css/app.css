@@ -140,3 +140,10 @@ details.shows[open] > summary::after { content: "▴"; }
 #chart svg { touch-action: pan-y; cursor: crosshair; }
 .tip { position: absolute; z-index: 6; pointer-events: none; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .84rem; line-height: 1.35; box-shadow: 0 6px 20px rgba(0, 0, 0, .22); max-width: min(20rem, 90%); }
 .tip div + div { margin-top: 2px; }
+
+/* statistiky */
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 8px; }
+.stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); min-width: 0; }
+.stat .l { font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.stat .v { font: 600 1.25rem/1.25 var(--mono); overflow-wrap: anywhere; }
+.stat .s { font-size: .8rem; color: var(--muted); }

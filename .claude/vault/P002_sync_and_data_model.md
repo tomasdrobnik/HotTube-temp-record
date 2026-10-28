@@ -8,7 +8,7 @@
 
 ## Current Understanding
 
-State schema 1 (`schema, gen, session, csv[], manual[], stoke, filt{factor,windows}, archive[]`). Prototype flat format is migrated on load (`migrate`), deterministic manual ids `m_p<t base36>` so two devices migrate identically. `data/state.json` in repo is still prototype format until first write.
+State schema 1 (`schema, gen, session, csv[], manual[], stoke, filt{factor,auto,windows}, archive[]`). Prototype flat format is migrated on load (`migrate`), deterministic manual ids `m_p<t base36>` so two devices migrate identically. `data/state.json` in repo is still prototype format until first write.
 
 ## Key Details
 

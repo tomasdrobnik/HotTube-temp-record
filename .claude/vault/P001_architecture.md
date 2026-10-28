@@ -21,7 +21,10 @@ Static GitHub Pages site (vanilla ES modules, no build, no runtime deps). UI in 
 - Chart: date under time axis, hover tooltip (temp, date/time, trend, prediction) via `buildChart().info(t)`.
 - Cooling prediction horizon (default 1 h; 3 h/8 h/12 h/1 d/2 d/custom up to 14 d, per device `ui.coolHorizon`) drives ribbon tile "Za X", details note, hover and a marker on the chart.
 - Gotcha: GitHub Pages caches JS ~10 min, so right after a deploy modules can be mixed old/new (errors like undefined field); hard reload fixes. Local dev: use a no-store server and a fresh origin.
-- Tests: `node --test test/*.test.js` (37 tests incl. SPEC 6.5 reference values).
+- Dates: tiles/chip/summary use `fmtN` (adds "(d. m.)" when not today). Details show "Poslední natopení" + time since (d h).
+- Filtration factor: `filt.auto` (default true) → `analyzeCool` uses `Fest` estimated from current data, else manual `filt.factor`; typing a factor turns auto off.
+- Statistics section: pure `computeStats(sessions)` over current + archive (`archive[].data`), scope Vše/Aktuální; cooling drop/day excludes mix/bath/filtration pairs.
+- Tests: `node --test test/*.test.js` (39 tests incl. SPEC 6.5 reference values).
 
 ## Related Topics
 

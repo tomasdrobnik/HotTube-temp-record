@@ -16,7 +16,7 @@ export function defaultState() {
     session: { mode: 'heat', target: 40, coolStart: null, coolThr: 4, coolTa: null },
     csv: [], manual: [],
     stoke: { interval: 30, next: null, log: [] },
-    filt: { factor: 1.5, windows: [{ h: 1, m: 20, d: 30 }, { h: 3, m: 40, d: 30 }, { h: 5, m: 40, d: 30 }, { h: 10, m: 0, d: 120 }] },
+    filt: { factor: 1.5, auto: true, windows: [{ h: 1, m: 20, d: 30 }, { h: 3, m: 40, d: 30 }, { h: 5, m: 40, d: 30 }, { h: 10, m: 0, d: 120 }] },
     archive: [],
   };
 }

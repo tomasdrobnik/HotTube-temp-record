@@ -197,3 +197,30 @@ test('Predikce poklesu: volitelný horizont (inH), výchozí 1 h = in1h', () => 
   assert.ok(C8.inH < C1.inH && C48.inH < C8.inH && C48.inH > 4);
   near(C8.inH, C8.sim(C8.last.t + 8 * H).at(-1)[1], 1e-9);
 });
+
+test('Faktor filtrace: autoF bere primárně odhad z aktuálních dat, jinak ručně zadaný', () => {
+  const amb = A.makeAmbient(hourlySeries(), MANUAL), pts = allPts();
+  const base = { coolStart: MANUAL[1].t, amb, thr: 4, F: 3, filt: FILT, horizonH: 24 };
+  const man = A.analyzeCool(pts, base), auto = A.analyzeCool(pts, { ...base, autoF: true });
+  assert.equal(man.F, 3); assert.equal(man.Fsrc, 'ručně');
+  near(auto.F, auto.Fest, 1e-12); assert.equal(auto.Fsrc, 'data'); near(auto.F, 1.5, 0.3);
+  assert.ok(auto.inH > man.inH, 'vyšší ručně zadaný faktor = rychlejší chladnutí ve filtraci → nižší teplota');
+  // bez filtrace v datech se použije ručně zadaný
+  const noF = A.analyzeCool(pts, { ...base, autoF: true, filt: [] });
+  assert.equal(noF.Fsrc, 'ručně'); assert.equal(noF.F, 3);
+});
+
+test('computeStats: počty, extrémy, koupání, filtrace za den, pokles za den', () => {
+  const amb = A.makeAmbient(hourlySeries(), MANUAL), pts = allPts();
+  const S = A.computeStats([{ pts, coolStart: MANUAL[1].t, target: 40, stokeCount: 2 }], { filt: FILT, amb });
+  assert.equal(S.heatings, 1); assert.equal(S.reached, 0); assert.equal(S.max.T, 37.9); assert.equal(S.min.T, 7.7);
+  assert.equal(S.baths, 1); assert.equal(S.bathAvg, 37.9); assert.equal(S.stoke, 2); assert.equal(S.manual, 2);
+  near(S.avg, 17.8, 0.5, 'časově vážený průměr'); assert.equal(S.aboveTargetH, 0);
+  near(S.filtPerDayH, 3.7, 0.7, 'filtrace h/den (1,5 h + 2 h = 3,5 h denně)');
+  near(S.dropPerDay, 5.5, 1, 'pokles °C/den'); assert.ok(S.coolDiff > 25 && S.dropPer10 > 1 && S.dropPer10 < 3);
+  assert.ok(S.ambMin < 5 && S.ambAvg > 0);
+  assert.equal(A.computeStats([], {}).count, 0);
+  // dvě relace (archiv + aktuální): počty se sčítají
+  const two = A.computeStats([{ pts, coolStart: MANUAL[1].t, target: 40 }, { pts, coolStart: null, target: 40 }], { filt: FILT, amb });
+  assert.equal(two.heatings, 2); assert.equal(two.count, 2 * pts.length);
+});
