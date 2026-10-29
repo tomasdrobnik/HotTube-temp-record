@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "gen": 1,
-  "updated": 1793310104902,
-  "updatedBy": "iPhone",
+  "updated": 1793311698777,
+  "updatedBy": "Claude (ruční úprava)",
   "session": {
     "mode": "cool",
     "target": 40,
@@ -193,9 +193,10 @@
       "bath": false,
       "stoke": false,
       "note": "",
-      "mod": 1793310045129,
+      "mod": 1793311698777,
       "amb": 7.8,
-      "ambSrc": "pred"
+      "ambSrc": "pred",
+      "bathEnd": true
     }
   ],
   "stoke": {
