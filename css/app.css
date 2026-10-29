@@ -150,3 +150,7 @@ details.shows[open] > summary::after { content: "▴"; }
 
 .legend i.lg-frost { background: var(--frost); height: 8px; width: 8px; border-radius: 50%; }
 .frost { color: var(--frost); font-weight: 600; }
+
+.chip.bath { background: var(--warn-bg); color: var(--warn); }
+select.typ { min-height: 36px; padding: 4px 6px; font-size: .84rem; max-width: 11rem; }
+.bathbtn-on { background: var(--warn); border-color: var(--warn); color: var(--on-accent); font-weight: 650; }

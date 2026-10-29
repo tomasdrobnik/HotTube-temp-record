@@ -280,10 +280,26 @@ export function makeAmbient(series, manualPts, constTa) {
   return Object.assign(t => interpLin(S, t), { src: (series || []).length ? (meas.length ? 'předpověď + ruční měření' : 'předpověď') : 'ruční měření', fallback: !(series || []).length });
 }
 
+/* ===== Koupání (víko sejmuto) ===== */
+/** Intervaly koupání z ručních značek: od prvního zápisu `bath` po zápis `bathEnd` (víko zpět). Neukončené má active = true.
+ *  Režimy: natápění (víko ano) · koupání (víko ne) · chladnutí (víko ano). */
+export function bathIntervals(pts) {
+  const out = []; let cur = null;
+  for (const p of pts) {
+    if (p.bath && !cur) cur = { a: p.t, b: null, active: true, n: 0, sum: 0 };
+    if (cur && p.bath) { cur.n++; cur.sum += p.T; }
+    if (p.bathEnd && cur) { cur.b = p.t; cur.active = false; out.push(cur); cur = null; }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+export const bathingNow = ints => { const l = ints[ints.length - 1]; return l && l.active ? l : null; };
+const inBath = (ints, t, endIfActive = Infinity) => ints.some(i => t >= i.a && (i.b == null ? t <= endIfActive : t < i.b)); // bod ukončení koupání už patří k nové křivce (víko zpět)
+
 /* ===== Chladnutí ===== */
 /** Newton s proměnným okolím: dT/dt = −k·f(t)·(T − Ta(t)); k z párů sousedních bodů (regrese přes počátek). */
 export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFactor, filt = [], horizonH = 1, autoF = false }) {
-  const Rc = { cool: true, thr, ok: false, amb, horizonH };
+  const Rc = { cool: true, thr, ok: false, amb, horizonH, F, Fmanual: F, Fsrc: 'ručně' };
   const nearF = (a, b) => nearFilt(filt, a, b), inF = t => inFilt(filt, t);
   let C = pts.filter(p => p.t >= coolStart); const anchor = pts.filter(p => p.t <= coolStart).pop();
   if (anchor && (!C.length || C[0].t !== anchor.t)) C = [anchor, ...C];
@@ -294,8 +310,10 @@ export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFa
   const rec = C.filter(p => p.t >= last.t - 30 * MIN), r0 = rec.length >= 2 ? rec[0] : C[C.length - 2];
   Rc.rateShort = (last.T - r0.T) / ((last.t - r0.t) / H); Rc.rateShortFrom = r0.t;
   if (last.T <= thr) Rc.below = (C.find(p => p.t >= Rc.peak.t && p.T <= thr) || last).t;
-  const mixes = C.filter(p => p.mix || p.bath); Rc.mixAt = mixes.length ? mixes[mixes.length - 1].t : null;
-  Rc.lastIsMix = !!(last.mix || last.bath); Rc.lastIsBath = !!last.bath;
+  const mixes = C.filter(p => p.mix || p.bath || p.bathEnd); Rc.mixAt = mixes.length ? mixes[mixes.length - 1].t : null;
+  Rc.lastIsMix = !!(last.mix || last.bath || last.bathEnd); Rc.lastIsBath = !!last.bath; Rc.lastIsBathEnd = !!last.bathEnd;
+  Rc.baths = bathIntervals(pts); const bnow = bathingNow(Rc.baths);
+  if (bnow) { Rc.bathing = true; Rc.bathSince = bnow.a; Rc.msg = 'Koupání probíhá (víko sejmuto) – predikce chladnutí se obnoví po zápisu „koupání ukončeno“.'; return Rc; }
   const base = Rc.mixAt && Rc.mixAt > Rc.peak.t ? Rc.mixAt : Rc.peak.t; Rc.base = base;
   const D = C.filter(p => p.t >= base && p.T - amb(p.t) > 0.3);
   if (D.length < 2 || last.t === base) {
@@ -358,8 +376,8 @@ export function warnState(R, filt = []) {
   if (!R || !R.ok || R.reached || !R.heat || R.heat.length < 2) return null;
   const h = R.heat, last = h[h.length - 1], prev = h[h.length - 2], d = last.T - prev.T;
   if (d < 0 && nearFilt(filt, prev.t, last.t)) return { lvl: 'warn', key: 'filt', d };
-  if (d < 0 && last.bath) return { lvl: 'warn', key: 'bath', d };
-  if (d < 0 && last.mix) return { lvl: 'warn', key: 'mix', d };
+  if (d < 0 && (last.bath || bathingNow(bathIntervals(h)))) return { lvl: 'warn', key: 'bath', d };
+  if (d < 0 && (last.mix || last.bathEnd)) return { lvl: 'warn', key: 'mix', d };
   if (R.rateShort < CONFIG.dropRate || d <= CONFIG.dropStep) return { lvl: 'bad', key: 'cool', d, prevT: prev.t };
   const stall = R.pauses && R.pauses.ongoing;
   if (stall || (R.rate > 0 && R.rateShort < CONFIG.weakFrac * R.rate && R.rateShort < CONFIG.weakAbs)) return { lvl: 'warn', key: 'weak', d };
@@ -385,7 +403,7 @@ export function computeStats(sessions, { filt = [], amb = null, maxGapMin = 60 }
   const S = { sessions: sessions.length, heatings: 0, reached: 0, count: 0 };
   const all = []; let wSum = 0, wT = 0, aboveMs = 0, covMs = 0; const heatRates = [], toTarget = [], heatDur = [];
   let dropNum = 0, dropDen = 0, diffNum = 0, ambNum = 0, coolPairs = 0, stoke = 0;
-  const range = [];
+  const range = [], bathAll = [];
   for (const ss of sessions) {
     const P = ss.pts || []; if (!P.length) continue;
     S.count += P.length; stoke += ss.stokeCount || 0; range.push([P[0].t, P[P.length - 1].t]);
@@ -405,11 +423,12 @@ export function computeStats(sessions, { filt = [], amb = null, maxGapMin = 60 }
       }
     }
     // chladnutí: sousední páry po konci natápění, bez skoků (zamíchání/koupání/filtrace)
+    const bi = bathIntervals(P), lastT = P[P.length - 1].t; bathAll.push(...bi.map(i => ({ ...i, b: i.b ?? lastT })));
     if (ss.coolStart != null) {
       const C = P.filter(p => p.t >= ss.coolStart);
       for (let i = 1; i < C.length; i++) {
         const a = C[i - 1], b = C[i], dt = b.t - a.t;
-        if (dt <= 0 || dt > 3 * H || b.mix || b.bath || nearFilt(filt, a.t, b.t)) continue;
+        if (dt <= 0 || dt > 3 * H || b.mix || b.bath || b.bathEnd || inBath(bi, a.t, lastT) || inBath(bi, b.t, lastT) || nearFilt(filt, a.t, b.t)) continue;
         const Ta = amb ? (amb(a.t) + amb(b.t)) / 2 : 0;
         dropNum += a.T - b.T; dropDen += dt; diffNum += dt * ((a.T + b.T) / 2 - Ta); ambNum += dt * Ta; coolPairs++;
       }
@@ -419,7 +438,8 @@ export function computeStats(sessions, { filt = [], amb = null, maxGapMin = 60 }
   const mx = all.reduce((m, p) => p.T > m.T ? p : m, all[0]), mn = all.reduce((m, p) => p.T < m.T ? p : m, all[0]);
   S.max = mx; S.min = mn;
   S.avg = wSum > 0 ? wT / wSum : null; S.coveredH = covMs / H; S.aboveTargetH = aboveMs / H;
-  const baths = all.filter(p => p.bath); S.baths = baths.length; S.bathAvg = baths.length ? baths.reduce((a, p) => a + p.T, 0) / baths.length : null;
+  const baths = all.filter(p => p.bath); S.bathAvg = baths.length ? baths.reduce((a, p) => a + p.T, 0) / baths.length : null;
+  S.baths = bathAll.length; S.bathPoints = baths.length; S.bathH = bathAll.reduce((a, i) => a + (i.b - i.a), 0) / H; S.bathActive = bathAll.some(i => i.active);
   S.manual = all.filter(p => p.src === 'man').length; S.stoke = stoke;
   S.avgHeatRate = heatRates.length ? heatRates.reduce((a, b) => a + b, 0) / heatRates.length : null;
   S.avgHeatH = heatDur.length ? heatDur.reduce((a, b) => a + b, 0) / heatDur.length : null;

@@ -26,7 +26,7 @@ Static GitHub Pages site (vanilla ES modules, no build, no runtime deps). UI in 
 - Statistics section: pure `computeStats(sessions)` over current + archive (`archive[].data`), scope Vše/Aktuální; cooling drop/day excludes mix/bath/filtration pairs.
 - Ambient ≤ 0 °C is highlighted (--frost): thick curve segments, hourly dots, dotted 0 °C line, "mráz" in hover, hours ≤ 0 in stats.
 - Heating chart shows 95 % trend cone from the last point and a whisker (1σ thick, 95 % thin + times) at the target level; cooling: whisker at the threshold; hover shows 95 % band.
-- Tests: `node --test test/*.test.js` (42 tests incl. SPEC 6.5 reference values).
+- Tests: `node --test test/*.test.js` (44 tests incl. SPEC 6.5 reference values).
 
 ## Related Topics
 

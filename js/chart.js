@@ -5,8 +5,8 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const dayKey = t => { const p = pragueParts(t); return p.y * 10000 + p.mo * 100 + p.d; };
 const nf = (v, d = 1) => v.toLocaleString('cs-CZ', { minimumFractionDigits: d, maximumFractionDigits: d });
 
-const ALL_ON = { sensor: true, manual: true, model: true, filt: true, zones: true, amb: true, ref: true };
-/** o: {horizonH (predikce poklesu, h), horizonLabel, aheadMs (>0 = osa končí o tolik za posledním bodem, trend/predikce se extrapoluje), rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → {svg, info(t), geom} */
+const ALL_ON = { sensor: true, manual: true, model: true, filt: true, zones: true, amb: true, ref: true, bath: true };
+/** o: {baths ([{a,b,active}], koupání = víko pryč), horizonH (predikce poklesu, h), horizonLabel, aheadMs (>0 = osa končí o tolik za posledním bodem, trend/predikce se extrapoluje), rangeH (undefined = auto, 0 = vše, N = posledních N h), show:{sensor,manual,model,filt,zones,amb,ref}, W, pts, mode:'heat'|'cool', R, C, filt, amb, target, thr, coolStart, colors:{line,muted,water,heat,bad,pause,panel}} → {svg, info(t), geom} */
 export const chartSvg = o => buildChart(o).svg;
 export function buildChart(o) {
   const { pts, mode, R, C, filt, amb, colors: c } = o;
@@ -54,6 +54,10 @@ export function buildChart(o) {
   s += `<text x="${L - 6}" y="${T - 3}" text-anchor="end" fill="${c.muted}">°C</text>`;
   if (show.filt) for (const w of filtWins(filt, x0, x1)) { const a = Math.max(w.a, x0), b = Math.min(w.b, x1); s += `<rect x="${X(a)}" y="${T}" width="${Math.max(1, X(b) - X(a))}" height="${ih}" fill="${c.water}" opacity=".16"><title>filtrace ${hmOf(w.a)}–${hmOf(w.b)}</title></rect>`; }
   if (mode === 'heat' && show.zones && R && R.pauses) for (const p of R.pauses.done.concat(R.pauses.ongoing ? [R.pauses.ongoing] : [])) s += `<rect x="${X(p.a)}" y="${T}" width="${Math.max(1, X(p.b) - X(p.a))}" height="${ih}" fill="${c.pause}"><title>pauza ohřevu ${hmOf(p.a)}–${hmOf(p.b)}</title></rect>`;
+  if (show.bath) for (const b of o.baths || []) { // koupání: víko sejmuto (od prvního zápisu „koupání“ po „koupání ukončeno“)
+    const a = Math.max(b.a, x0), e = Math.min(b.b ?? last.t, x1); if (e < x0 || b.a > x1) continue;
+    s += `<rect x="${X(a)}" y="${T}" width="${Math.max(3, X(e) - X(a))}" height="${ih}" fill="${c.heat}" opacity=".13"><title>koupání (víko pryč) ${hmOf(b.a)}–${b.active ? 'probíhá' : hmOf(b.b)}</title></rect><text x="${X(a) + 3}" y="${T + ih - 6}" fill="${c.heat}" font-weight="600">koupání${b.active ? ' …' : ''}</text>`;
+  }
   const ry = Y(refY), rc = mode === 'cool' ? c.bad : c.heat;
   if (show.ref) s += `<line x1="${L}" x2="${L + iw}" y1="${ry}" y2="${ry}" stroke="${rc}" stroke-width="1.2" stroke-dasharray="6 4"/><text x="${L + 4}" y="${ry + (mode === 'cool' ? 14 : -4)}" fill="${rc}">${mode === 'cool' ? 'hranice' : 'cíl'} ${nf(refY, refY % 1 ? 1 : 0)} °C</text>`;
   if (ambS.length) s += `<polyline points="${ambS.map(a => X(a[0]) + ',' + Y(a[1])).join(' ')}" fill="none" stroke="${c.muted}" stroke-width="1.3" stroke-dasharray="1 3"/>`;
@@ -108,7 +112,7 @@ export function buildChart(o) {
   if (mode === 'heat' && show.model && R && R.fit && R.eta && R.sigma) whisker(R.eta, R.sigma, o.target, c.heat, 'Natopeno');
   if (mode === 'cool' && show.model && C && C.tThr && C.sigma) whisker(C.tThr, C.sigma, o.thr, c.bad, 'Pod hranicí');
   const dot = p => {
-    if (p.src === 'man') return `<circle cx="${X(p.t)}" cy="${Y(p.T)}" r="5" fill="${c.heat}" stroke="${c.panel}" stroke-width="1.5"><title>${hmOf(p.t)} ${nf(p.T)} °C (ručně${p.mix ? ', zamícháno' : ''}${p.bath ? ', koupání' : ''})</title></circle>`;
+    if (p.src === 'man') return `<circle cx="${X(p.t)}" cy="${Y(p.T)}" r="5" fill="${c.heat}" stroke="${c.panel}" stroke-width="1.5"><title>${hmOf(p.t)} ${nf(p.T)} °C (ručně${p.mix ? ', zamícháno' : ''}${p.bath ? ', koupání – víko pryč' : ''}${p.bathEnd ? ', koupání ukončeno – víko zpět' : ''})</title></circle>`;
     return `<circle cx="${X(p.t)}" cy="${Y(p.T)}" r="2.6" fill="${c.water}"><title>${hmOf(p.t)} ${nf(p.T)} °C</title></circle>`;
   };
   for (const p of vis) s += dot(p);
@@ -144,7 +148,7 @@ export function buildChart(o) {
   const info = t => {
     if (t <= last.t + 5 * MIN) { // změřený bod
       const p = nearest(t); if (!p) return null;
-      const o2 = { t: p.t, T: p.T, kind: 'měřeno', src: p.src === 'man' ? 'ruční zápis' : 'čidlo', flags: [p.stoke && 'přiloženo', p.mix && 'zamícháno', p.bath && 'koupání'].filter(Boolean), sx: X(p.t), sy: clampY(p.T), amb: amb ? amb(p.t) : null };
+      const o2 = { t: p.t, T: p.T, kind: 'měřeno', src: p.src === 'man' ? 'ruční zápis' : 'čidlo', flags: [p.stoke && 'přiloženo', p.mix && 'zamícháno', p.bath && 'koupání (víko pryč)', p.bathEnd && 'koupání ukončeno (víko zpět)'].filter(Boolean), sx: X(p.t), sy: clampY(p.T), amb: amb ? amb(p.t) : null };
       if (mode === 'heat') {
         const tv = trendAt(p.t);
         if (tv != null) o2.trend = { rate: heatRate, value: tv, dev: p.T - tv };

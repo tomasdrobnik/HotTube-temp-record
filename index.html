@@ -20,6 +20,7 @@
   <div class="top">
     <span id="modeChip" class="chip">Natápění</span>
     <div class="actions">
+      <button id="bathBtn" type="button">Koupání (víko pryč)</button>
       <button id="endOpen" type="button">Ukončit natápění</button>
       <button id="newOpen" type="button">Nový ohřev</button>
     </div>
@@ -102,7 +103,8 @@
     <div class="row">
       <label class="chk" id="manStokeL"><input id="manStoke" type="checkbox"> přiloženo</label>
       <label class="chk"><input id="manMix" type="checkbox"> zamícháno</label>
-      <label class="chk"><input id="manBath" type="checkbox"> koupání</label>
+      <label class="chk"><input id="manBath" type="checkbox"> koupání (víko pryč)</label>
+      <label class="chk"><input id="manBathEnd" type="checkbox"> koupání ukončeno (víko zpět)</label>
     </div>
     <div id="entryErr" class="msg bad" role="alert" hidden></div>
     <div id="entryFb" class="fb" aria-live="polite"></div>
@@ -153,6 +155,7 @@
         <label class="chk"><input type="checkbox" data-show="filt"> filtrace</label>
         <label class="chk"><input type="checkbox" data-show="zones"> pauzy / zóna</label>
         <label class="chk"><input type="checkbox" data-show="amb"> okolí</label>
+        <label class="chk"><input type="checkbox" data-show="bath"> koupání (víko pryč)</label>
         <label class="chk"><input type="checkbox" data-show="ref"> cíl / hranice</label>
       </div>
       </details>
@@ -182,7 +185,7 @@
 
 <details class="sec" id="secMan" data-key="man">
   <summary><h2>Ruční zápisy</h2><span class="sum" id="sumMan"></span></summary>
-  <div class="body"><table><thead><tr><th>Čas</th><th>°C</th><th>Okolí</th><th>Značky</th><th></th></tr></thead><tbody id="manList"></tbody></table></div>
+  <div class="body"><table><thead><tr><th>Čas</th><th>°C</th><th>Okolí</th><th>Typ zápisu</th><th></th></tr></thead><tbody id="manList"></tbody></table></div>
 </details>
 
 <details class="sec full" id="secStats" data-key="stats">

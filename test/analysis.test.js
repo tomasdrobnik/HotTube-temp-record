@@ -244,3 +244,50 @@ test('Začátek natápění = čas „Nový ohřev“ (heatStart); starší data
   // souhrn pro archiv bere start ze session
   assert.equal(A.summarize(pts, { target: 40, now: 1, heatStart: start }).start, start);
 });
+
+test('Koupání (víko pryč) → „koupání ukončeno“ (víko zpět): intervaly, pozastavená predikce, nová křivka', () => {
+  const t0 = A.zonedToEpoch(2026, 10, 29, 20, 0), at = m => t0 + m * MIN;
+  const amb = A.makeAmbient([], [], 5);
+  const cool = [{ t: at(0), T: 38.4 }, { t: at(10), T: 38.0 }, { t: at(20), T: 37.7 }]; // dohořelo, chladne s víkem
+  const bathPts = [{ t: at(25), T: 38.8, bath: true, mix: true, src: 'man' }, { t: at(66), T: 40.3, bath: true, src: 'man' }, { t: at(99), T: 40.4, bath: true, src: 'man' }];
+  const end = { t: at(160), T: 38.7, bathEnd: true, src: 'man' };
+  const sensor = (from, to, T0, step = 0.05) => { const o = []; for (let m = from; m <= to; m += 10) o.push({ t: at(m), T: Math.round((T0 - (m - from) / 10 * step) * 10) / 10, src: 'csv' }); return o; };
+  const during = A.mergePts(sensor(30, 150, 39, 0.3), []);
+  const base = { coolStart: at(0), amb, thr: 4, F: 1.5, filt: [] };
+
+  // jen začátek koupání → probíhá, predikce pozastavena
+  const pts1 = A.mergePts([...cool, ...during], bathPts);
+  const I1 = A.bathIntervals(pts1); assert.equal(I1.length, 1); assert.equal(I1[0].active, true); assert.equal(I1[0].a, at(25)); assert.equal(I1[0].n, 3);
+  const C1 = A.analyzeCool(pts1, base);
+  assert.ok(C1.ok); assert.equal(C1.bathing, true); assert.equal(C1.bathSince, at(25)); assert.equal(C1.tThr, undefined); assert.equal(C1.inH, undefined); assert.match(C1.msg, /Koupání probíhá/);
+
+  // po zápisu „koupání ukončeno“ + dalších bodech se křivka počítá znovu od něj, zápisy z koupání se nepoužijí
+  const after = sensor(170, 230, 38.5, 0.05);
+  const pts2 = A.mergePts([...cool, ...during, ...after], [...bathPts, end]);
+  const I2 = A.bathIntervals(pts2); assert.equal(I2.length, 1); assert.equal(I2[0].active, false); assert.equal(I2[0].b, at(160));
+  assert.equal(A.bathingNow(I2), null);
+  const C2 = A.analyzeCool(pts2, base);
+  assert.equal(C2.bathing, undefined); assert.equal(C2.base, at(160)); assert.equal(C2.lastIsBathEnd, false);
+  assert.ok(C2.k > 0 && C2.k < 0.02, 'k jen z bodů po koupání (pomalé chladnutí s víkem): ' + C2.k); assert.ok(C2.inH < C2.last.T);
+  // těsně po ukončení (bez dalších bodů) čeká na další zápisy
+  const C3 = A.analyzeCool(A.mergePts([...cool, ...during], [...bathPts, end]), base);
+  assert.equal(C3.lastIsBathEnd, true); assert.equal(C3.fit, undefined); assert.match(C3.msg, /vyhodnotí z dalších zápisů/);
+
+  // legacy: jednobodové koupání s ukončením ve stejném bodě = nová křivka od něj (reference 6.5)
+  const one = A.bathIntervals([{ t: 1, T: 30, bath: true, bathEnd: true }]); assert.equal(one.length, 1); assert.equal(one[0].active, false);
+  // varování při natápění: pokles během koupání = jen informace
+  const heat = [0, 1, 2, 3, 4].map(i => ({ t: at(i * 10), T: 30 + i })).concat([{ t: at(50), T: 33.5, bath: true, src: 'man' }]);
+  assert.equal(A.warnState(A.analyze(heat, { manualOnly: true }), []).key, 'bath');
+});
+
+test('computeStats: koupání jako intervaly (počet, doba bez víka), páry v koupání se nepočítají do poklesu', () => {
+  const t0 = A.zonedToEpoch(2026, 10, 29, 20, 0), at = m => t0 + m * MIN, amb = A.makeAmbient([], [], 5);
+  const P = []; for (let m = 0; m <= 300; m += 10) P.push({ t: at(m), T: 38 - m / 10 * 0.2, src: 'csv' });
+  P.push({ t: at(60), T: 37, bath: true, src: 'man' }, { t: at(120), T: 36, bathEnd: true, src: 'man' });
+  P.sort((a, b) => a.t - b.t);
+  const S = A.computeStats([{ pts: P, coolStart: at(0), target: 40 }], { amb });
+  assert.equal(S.baths, 1); near(S.bathH, 1, 0.01); assert.equal(S.bathActive, false); assert.equal(S.bathPoints, 1);
+  const noBath = A.computeStats([{ pts: P.filter(p => !p.bath && !p.bathEnd), coolStart: at(0), target: 40 }], { amb });
+  assert.ok(S.coolPairs < noBath.coolPairs, 'páry v době koupání jsou vyloučeny');
+  const open = A.computeStats([{ pts: P.filter(p => !p.bathEnd), coolStart: at(0), target: 40 }], { amb }); assert.equal(open.bathActive, true);
+});

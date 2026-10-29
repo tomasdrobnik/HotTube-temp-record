@@ -24,7 +24,7 @@ export function hourlySeries(from = ANCHORS[0].t, to = ANCHORS.at(-1).t) {
 export const FILT = [{ h: 1, m: 20, d: 30 }, { h: 3, m: 40, d: 30 }, { h: 5, m: 40, d: 30 }, { h: 10, m: 0, d: 120 }];
 export const MANUAL = [
   { id: 'm_a', t: 1792948560000, T: 34.4, amb: 8, ambSrc: 'pred' },
-  { id: 'm_b', t: 1792960200000, T: 37.9, bath: true, mix: true },
+  { id: 'm_b', t: 1792960200000, T: 37.9, bath: true, mix: true, bathEnd: true }, // koupání skončilo (víko zpět) v 21:30
 ];
 export function fixtureCsv() {
   return [
