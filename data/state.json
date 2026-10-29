@@ -1,14 +1,15 @@
 {
   "schema": 1,
   "gen": 1,
-  "updated": 1793296895058,
-  "updatedBy": "iPhone",
+  "updated": 1793300018369,
+  "updatedBy": "Mac",
   "session": {
     "mode": "heat",
     "target": 40,
     "coolStart": null,
     "coolThr": 10,
-    "coolTa": null
+    "coolTa": null,
+    "heatStart": null
   },
   "csv": [
     {
@@ -110,6 +111,18 @@
       "note": "",
       "mod": 1793296893545,
       "amb": 8.6,
+      "ambSrc": "pred"
+    },
+    {
+      "id": "m_wdovw5y9j0t8",
+      "t": 1793299980000,
+      "T": 38.4,
+      "mix": false,
+      "bath": false,
+      "stoke": false,
+      "note": "",
+      "mod": 1793300016855,
+      "amb": 8.4,
       "ambSrc": "pred"
     }
   ],
