@@ -42,7 +42,7 @@ test('migrace prototypového formátu (fixtures/state-prototype.json = state.jso
   assert.equal(parseAllCSV(s.csv, 0).pts.length > 100, true);
   assert.equal(s.manual.length, 2); assert.ok(s.manual.every(m => /^m_/.test(m.id)));
   assert.equal(s.manual[1].bath, true); assert.equal(s.manual[1].mix, true); assert.equal(s.manual[0].ambSrc, 'pred');
-  assert.deepEqual(s.session, { mode: 'cool', target: 40, coolStart: 1792954260000, coolThr: 4, coolTa: null });
+  assert.deepEqual(s.session, { mode: 'cool', target: 40, coolStart: 1792954260000, coolThr: 4, coolTa: null, heatStart: null });
   assert.equal(s.filt.factor, 1.5); assert.equal(s.filt.windows.length, 4);
   assert.deepEqual(s.stoke, { interval: 30, next: null, log: [] });
   assert.deepEqual(migrate(proto()).manual.map(m => m.id), s.manual.map(m => m.id)); // ID deterministická → dvě zařízení = stejná data

@@ -15,6 +15,8 @@ const fmtD = (t, ref) => { const a = A.pragueParts(t), b = A.pragueParts(ref); r
 const hLabel = h => h >= 24 && (h % 24 === 0 || h >= 48) ? `${nf(h / 24, (h / 24) % 1 ? 1 : 0)} d` : `${nf(h, h % 1 ? 1 : 0)} h`;
 const fmtN = t => fmtD(t, Date.now());   // datum se přidá, když to není dnes
 const fmtSince = ms => { const m = Math.max(0, Math.round(ms / MIN)); return `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} h`; };
+const toLocalInput = t => { const p = A.pragueParts(t), z = n => String(n).padStart(2, '0'); return `${p.y}-${z(p.mo)}-${z(p.d)}T${z(p.h)}:${z(p.mi)}`; };
+const fromLocalInput = v => { const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/); return m ? A.zonedToEpoch(+m[1], +m[2], +m[3], +m[4], +m[5]) : null; };
 const rnd5 = t => Math.ceil(t / (5 * MIN)) * 5 * MIN;
 
 /* ===== lokální (per zařízení) nastavení UI ===== */
@@ -50,7 +52,8 @@ function derive() {
   const amb = A.makeAmbient(weather.series, manual, ss.coolTa);
   const d = { st, now, base, manual, pts, filt, ss, amb, cool: ss.mode === 'cool' && ss.coolStart != null };
   d.prior = A.priorRate(st.archive);
-  d.R = A.analyze(pts, { target: ss.target, winMin: ui.winMin, manualOnly: base.pts.length === 0, prior: d.prior });
+  d.heatStart = A.heatStartOf(ss, manual);
+  d.R = A.analyze(pts, { target: ss.target, winMin: ui.winMin, manualOnly: base.pts.length === 0, prior: d.prior, heatStart: d.heatStart });
   if (d.cool) d.C = A.analyzeCool(pts, { coolStart: ss.coolStart, amb, thr: ss.coolThr, F: st.filt.factor, filt, horizonH: ui.coolHorizon || 1, autoF: st.filt.auto !== false });
   return d;
 }
@@ -147,6 +150,7 @@ function renderHeat(d) {
   // podrobnosti
   if (R.eta && R.sigma) notes.push(`<div><b>ETA</b> ${fmtD(R.eta, ref)} ± ${Math.round(R.sigma / MIN)} min (1σ), 95% interval ${fmt(R.eta - 1.96 * R.sigma)}–${fmt(R.eta + 1.96 * R.sigma)}. Za ${Math.round((R.eta - ref) / MIN)} min od posledního bodu.</div>`);
   if (R.check) notes.push(`<div>Poslední bod: ${(R.check.dev >= 0 ? '+' : '')}${nf(R.check.dev)} °C proti trendu (${nf(R.check.z, 1)}σ).</div>`);
+  notes.push(d.heatStart != null ? `<div>Začátek natápění: <b>${fmtD(d.heatStart, d.now)}</b> (nastaven při „Nový ohřev“; starší data se do odhadu nepočítají).</div>` : '<div>Začátek natápění se hledá automaticky z dat – po „Nový ohřev“ se nastaví přesně.</div>');
   notes.push(`<div>Rychlost: okno trendu ${nf(R.rate)} °C/h · posledních ${Math.round((ref - R.rateShortFrom) / MIN)} min ${nf(R.rateShort)} °C/h · průměr od startu ${nf(R.rateAvg)} °C/h.</div>`);
   if (R.eta && R.etaCons) notes.push(`<div><b>Scénáře:</b> trend → ${fmtD(R.eta, ref)}; konzervativně (průměr od startu vč. pauz ${nf(R.rateAvg)} °C/h) → ${fmtD(R.etaCons, ref)}.</div>`);
   else if (R.noEta && R.etaCons) notes.push(`<div><b>Konzervativní odhad</b> (průměr od startu): ${fmtD(R.etaCons, ref)} – platí jen pokud se ohřev obnoví.</div>`);
@@ -337,13 +341,13 @@ function renderManual() {
 /* ===== statistiky ===== */
 let arcCache = { key: '', sessions: [] };
 function statSessions(scope) {
-  const cur = { pts: D.pts, coolStart: D.cool ? D.ss.coolStart : null, target: D.ss.target, stokeCount: D.st.stoke.log.length };
+  const cur = { pts: D.pts, coolStart: D.cool ? D.ss.coolStart : null, target: D.ss.target, heatStart: D.heatStart, stokeCount: D.st.stoke.log.length };
   if (scope === 'cur') return [cur];
   const key = D.st.archive.map(a => a.closedAt).join(',');
   if (arcCache.key !== key) arcCache = { key, sessions: D.st.archive.filter(a => a.data).map(a => ({
     pts: A.mergePts(A.parseAllCSV(a.data.csv || [], Date.now()).pts, a.data.manual || []),
     coolStart: a.data.session && a.data.session.mode === 'cool' ? a.data.session.coolStart : null,
-    target: (a.data.session && a.data.session.target) ?? 40, stokeCount: a.data.stoke && a.data.stoke.log ? a.data.stoke.log.length : 0 })) };
+    target: (a.data.session && a.data.session.target) ?? 40, heatStart: A.heatStartOf(a.data.session, a.data.manual), stokeCount: a.data.stoke && a.data.stoke.log ? a.data.stoke.log.length : 0 })) };
   return [...arcCache.sessions, cur];
 }
 function renderStats() {
@@ -417,6 +421,7 @@ function render() {
   $('endOpen').hidden = cool; $('secStoke').hidden = cool; $('manStokeL').hidden = cool;
   $('heatCtl').hidden = cool; $('coolCtl').hidden = !cool;
   if (document.activeElement !== $('target')) $('target').value = nt(d.ss.target);
+  if (document.activeElement !== $('hsTime')) $('hsTime').value = d.heatStart != null ? toLocalInput(d.heatStart) : '';
   if (document.activeElement !== $('coThr')) $('coThr').value = nt(d.ss.coolThr);
   if (document.activeElement !== $('coTa')) $('coTa').value = d.ss.coolTa ?? '';
   if (document.activeElement !== $('coStart') && cool) $('coStart').value = hmOf(d.ss.coolStart);
@@ -460,6 +465,8 @@ function bind() {
   // detail: cíl, okno, čas pro pravděpodobnost
   $('target').addEventListener('change', () => { const v = pn($('target').value); if (v > 0 && v < 100) store.mutate(d => { d.session.target = v; }, `cíl ${nt(v)} °C`); });
   document.querySelectorAll('[data-win]').forEach(b => b.addEventListener('click', () => { ui.winMin = +b.dataset.win; saveUi(); render(); }));
+  $('hsTime').addEventListener('change', () => { const t = fromLocalInput($('hsTime').value); if (t != null) store.mutate(d => { d.session.heatStart = t; }, 'začátek natápění ' + fmt(t)); });
+  $('hsAuto').addEventListener('click', () => store.mutate(d => { d.session.heatStart = null; }, 'začátek natápění: automaticky z dat'));
   $('deadline').addEventListener('input', () => { deadlineTouched = true; render(); });
   $('coThr').addEventListener('change', () => { const v = pn($('coThr').value); if (isFinite(v)) store.mutate(d => { d.session.coolThr = v; }, `hranice poklesu ${nt(v)} °C`); });
   $('coTa').addEventListener('change', () => { const v = pn($('coTa').value); store.mutate(d => { d.session.coolTa = isFinite(v) ? v : null; }, 'okolí ' + (isFinite(v) ? nt(v) + ' °C' : 'auto')); });
@@ -492,9 +499,9 @@ function bind() {
     const k = D.C && D.C.k, hadData = D.pts.length > 0;
     store.mutate(d => {
       const live = d.manual.filter(m => !m.deleted), pts = A.mergePts(A.parseAllCSV(d.csv, now).pts, live);
-      if (pts.length || d.csv.length) d.archive.push({ closedAt: now, summary: A.summarize(pts, { target: d.session.target, coolStart: d.session.coolStart, k: k || null, now }), data: { session: d.session, csv: d.csv, manual: live, stoke: d.stoke } });
+      if (pts.length || d.csv.length) d.archive.push({ closedAt: now, summary: A.summarize(pts, { target: d.session.target, coolStart: d.session.coolStart, k: k || null, now, heatStart: A.heatStartOf(d.session, live) }), data: { session: d.session, csv: d.csv, manual: live, stoke: d.stoke } });
       d.gen = (d.gen || 0) + 1; d.csv = []; d.manual = []; d.stoke = { interval: d.stoke.interval, next: null, log: [] };
-      d.session = { ...d.session, mode: 'heat', coolStart: null, coolTa: null };
+      d.session = { ...d.session, mode: 'heat', coolStart: null, coolTa: null, heatStart: t };
       if (isFinite(T0)) { d.manual.push({ id: newId(), t, T: Math.round(T0 * 10) / 10, mix: false, bath: false, stoke: stk, note: 'start ohřevu', mod: now }); }
       if (stk) addStoke(d, t);
     }, `nový ohřev ${fmt(t)}${hadData ? ' (předchozí data archivována)' : ''}`);

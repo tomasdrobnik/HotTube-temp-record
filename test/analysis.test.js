@@ -224,3 +224,23 @@ test('computeStats: počty, extrémy, koupání, filtrace za den, pokles za den'
   const two = A.computeStats([{ pts, coolStart: MANUAL[1].t, target: 40 }, { pts, coolStart: null, target: 40 }], { filt: FILT, amb });
   assert.equal(two.heatings, 2); assert.equal(two.count, 2 * pts.length);
 });
+
+test('Začátek natápění = čas „Nový ohřev“ (heatStart); starší data v CSV se nepoužijí', () => {
+  // dva dny klidu 8 °C v CSV, ohřev ručně od 17:03 (scénář z ostrých dat 29. 10. 2026)
+  const day = A.zonedToEpoch(2026, 10, 27, 0, 0), start = A.zonedToEpoch(2026, 10, 29, 17, 3);
+  const csv = []; for (let t = day; t < start + 60 * MIN; t += 10 * MIN) csv.push({ t, T: t < start ? 8 + (t % 3 === 0 ? 0.1 : 0) : 19 + (t - start) / H * 8, src: 'csv' });
+  const manual = [{ id: 'm1', t: start, T: 19.3, note: 'start ohřevu' }, { id: 'm2', t: start + 30 * MIN, T: 23.4 }];
+  const pts = A.mergePts(csv, manual);
+  assert.equal(A.heatStartOf({}, manual), start); assert.equal(A.heatStartOf({ heatStart: 5 }, manual), 5); assert.equal(A.heatStartOf({}, []), null);
+  const auto = A.analyze(pts, { target: 40, winMin: 0 });                       // bez heatStart: start se hledá v datech
+  const fixed = A.analyze(pts, { target: 40, winMin: 0, heatStart: start });
+  assert.equal(fixed.start.t, start); assert.ok(fixed.heat.every(p => p.t >= start));
+  near(fixed.rate, 8, 0.6, 'tempo od startu ≈ 8 °C/h'); near(fixed.rateAvg, 8, 0.6);
+  assert.ok(auto.start.t <= start, 'autodetekce start nikdy nepředbíhá');
+  near(fixed.eta, start + (40 - 19.3) / 8 * H, 15 * MIN, 'ETA');
+  // jediný bod po startu + prior
+  const one = A.analyze(pts.filter(p => p.t <= start), { target: 40, heatStart: start, prior: 5 });
+  assert.ok(one.ok && one.fromPrior && one.eta > start);
+  // souhrn pro archiv bere start ze session
+  assert.equal(A.summarize(pts, { target: 40, now: 1, heatStart: start }).start, start);
+});

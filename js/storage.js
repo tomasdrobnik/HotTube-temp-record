@@ -13,7 +13,7 @@ export const newId = () => 'm_' + Math.random().toString(36).slice(2, 10) + Date
 export function defaultState() {
   return {
     schema: SCHEMA, gen: 0, updated: 0, updatedBy: '',
-    session: { mode: 'heat', target: 40, coolStart: null, coolThr: 4, coolTa: null },
+    session: { mode: 'heat', target: 40, coolStart: null, coolThr: 4, coolTa: null, heatStart: null },
     csv: [], manual: [],
     stoke: { interval: 30, next: null, log: [] },
     filt: { factor: 1.5, auto: true, windows: [{ h: 1, m: 20, d: 30 }, { h: 3, m: 40, d: 30 }, { h: 5, m: 40, d: 30 }, { h: 10, m: 0, d: 120 }] },
@@ -42,7 +42,7 @@ export function migrate(raw) {
     if (m.amb != null) { o.amb = m.amb; o.ambSrc = m.ambSrc || 'man'; }
     return o;
   });
-  s.session = { mode: raw.mode === 'cool' ? 'cool' : 'heat', target: raw.target ?? 40, coolStart: raw.coolStart ?? null, coolThr: raw.coolThr ?? 4, coolTa: raw.coolTa ?? null };
+  s.session = { mode: raw.mode === 'cool' ? 'cool' : 'heat', target: raw.target ?? 40, coolStart: raw.coolStart ?? null, coolThr: raw.coolThr ?? 4, coolTa: raw.coolTa ?? null, heatStart: null };
   if (raw.stoke) s.stoke = { interval: raw.stoke.interval || 30, next: raw.stoke.next ?? null, log: [...(raw.stoke.log || [])] };
   if (Array.isArray(raw.filt)) s.filt.windows = raw.filt.map(w => ({ h: w.h, m: w.m, d: w.d }));
   if (raw.filtF) s.filt.factor = raw.filtF;

@@ -18,6 +18,8 @@ State schema 1 (`schema, gen, session, csv[], manual[], stoke, filt{factor,auto,
 - No token = read-only; edits queue locally, header shows `neuloženo: N`. Token only in localStorage key `hottube.token`, header `Authorization: Bearer`, never in URL/body/cache.
 - Polling 60 s with token (ETag 304), 5 min without (60 req/h unauth limit, unverified).
 
+- Heating start: `session.heatStart` (set by "Nový ohřev", editable in Podrobnosti); fallback = manual point with note "start ohřevu"; null = auto-detect. `analyze({heatStart})` ignores all points before it (CSV exports contain older days, auto-detect picked 27. 10. 00:00 on 29. 10. 2026).
+
 ## Related Topics
 
 - See also: P001_architecture.md

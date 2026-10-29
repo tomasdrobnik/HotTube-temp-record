@@ -188,8 +188,15 @@ export function findPauses(P, thr = CONFIG.pauseRate, minDur = CONFIG.pauseMinDu
     all: runs,
   };
 }
-export function analyze(pts, { target = 40, winMin = 60, manualOnly = false, prior = null } = {}) {
-  const R = { target, ok: false, prior };
+/** Začátek natápění = čas „Nový ohřev“ (session.heatStart); u starších dat poznámka „start ohřevu“ u prvního zápisu. null = autodetekce z dat. */
+export function heatStartOf(session, manual) {
+  if (session && session.heatStart != null) return session.heatStart;
+  const m = (manual || []).filter(x => !x.deleted && x.note === 'start ohřevu').sort((a, b) => a.t - b.t)[0];
+  return m ? m.t : null;
+}
+export function analyze(pts, { target = 40, winMin = 60, manualOnly = false, prior = null, heatStart = null } = {}) {
+  if (heatStart != null) { pts = pts.filter(p => p.t >= heatStart); manualOnly = true; } // data před začátkem natápění se neberou v úvahu
+  const R = { target, ok: false, prior, heatStart };
   if (pts.length === 1 && prior > CONFIG.minRise && manualOnly) { // jediný bod: jen odhad z předchozích ohřevů
     const p = pts[0]; R.start = R.last = p; R.heat = [p]; R.prelim = true; R.fromPrior = true; R.priorW = 0;
     R.rate = R.rateAvg = R.rateShort = prior; R.rateShortFrom = p.t; R.pauses = { done: [], ongoing: null }; R.ok = true;
@@ -360,9 +367,9 @@ export function warnState(R, filt = []) {
 }
 
 /** Souhrn relace pro archiv. */
-export function summarize(pts, { target, coolStart, k, now }) {
+export function summarize(pts, { target, coolStart, k, now, heatStart = null }) {
   if (!pts.length) return { count: 0 };
-  const R = analyze(pts, { target });
+  const R = analyze(pts, { target, heatStart });
   const max = pts.reduce((m, p) => p.T > m.T ? p : m, pts[0]);
   return {
     start: R.start ? R.start.t : pts[0].t, startT: R.start ? R.start.T : pts[0].T,
@@ -389,7 +396,7 @@ export function computeStats(sessions, { filt = [], amb = null, maxGapMin = 60 }
       if (ss.target != null && (a.T + b.T) / 2 >= ss.target) aboveMs += dt;
     }
     // natopení
-    const R = analyze(P, { target: ss.target ?? 40 });
+    const R = analyze(P, { target: ss.target ?? 40, heatStart: ss.heatStart ?? null });
     if (R.start) {
       const top = P.filter(p => p.t >= R.start.t && (ss.coolStart == null || p.t <= ss.coolStart)).reduce((m, p) => p.T > m.T ? p : m, R.start);
       if (top.T - R.start.T >= 3) {
