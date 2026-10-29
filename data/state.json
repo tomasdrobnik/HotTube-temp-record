@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "gen": 0,
-  "updated": 1793261332437,
+  "updated": 1793261345983,
   "updatedBy": "iPhone",
   "session": {
     "mode": "cool",
     "target": 40,
     "coolStart": 1792954260000,
-    "coolThr": 15,
+    "coolThr": 18,
     "coolTa": null
   },
   "csv": [
