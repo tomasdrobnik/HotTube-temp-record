@@ -245,6 +245,7 @@ function tipHtml(i) {
   r.push(`<b>${p.d}. ${p.mo}. ${p.y} · ${fmt(i.t)}</b>`);
   if (i.T != null) r.push(`${i.kind === 'predikce' ? 'Predikce' : 'Teplota'}: <b>${nf(i.T)} °C</b>${i.kind === 'měřeno' ? ` <span class="small">(${i.src}${i.flags.length ? ', ' + i.flags.join(', ') : ''})</span>` : ''}`);
   else r.push('<span class="small">Mimo změřená data a bez predikce (zapni „trend / predikce“).</span>');
+  if (i.band) r.push(`Pásmo 95 %: ${nf(i.band[0])}–${nf(i.band[1])} °C`);
   const tr = i.trend;
   if (tr) {
     const rate = tr.rate != null ? `${tr.rate >= 0 ? '+' : '−'}${nf(Math.abs(tr.rate))} °C/h` : '–';

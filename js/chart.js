@@ -75,9 +75,17 @@ export function buildChart(o) {
   }
   if (mode === 'heat' && show.model && R && R.fit && R.eta) { // trend: přímka z okna až do ETA
     const f = R.fit, tA = R.win[0].t, tB = o.aheadMs > 0 ? x1 : Math.min(R.eta, x1);
-    const yy = t => f.pred((t - f.t0) / H), yc = t => Y(Math.max(y0, Math.min(y1, yy(t))));
+    const yy = t => f.pred((t - f.t0) / H), yc = t => Y(Math.max(y0, Math.min(y1, yy(t)))), yc2 = v => Y(Math.max(y0, Math.min(y1, v)));
     const tB2 = o.aheadMs > 0 && f.b > 0 && yy(tB) > y1 ? f.t0 + ((y1 - f.a) / f.b) * H : tB; // přímka končí na horním okraji
     s += `<line x1="${X(tA)}" y1="${yc(tA)}" x2="${X(tB2)}" y2="${yc(tB2)}" stroke="${c.water}" stroke-width="2" stroke-dasharray="5 4"/>`;
+    if (R.sigma && f.se) { // kužel nejistoty trendu od posledního bodu (95 % predikční interval)
+      const tS = last.t, tE = o.aheadMs > 0 ? x1 : Math.min(x1, R.eta + 1.96 * R.sigma + 10 * MIN), up = [], lo = [];
+      for (let i = 0; i <= 24; i++) { const t = tS + (tE - tS) * i / 24, m = yy(t), w = 1.96 * f.se((t - f.t0) / H); up.push([t, m + w]); lo.push([t, m - w]); }
+      if (tE > tS) {
+        const edge = arr => `<polyline points="${arr.map(q => X(q[0]) + ',' + yc2(q[1])).join(' ')}" fill="none" stroke="${c.water}" stroke-width="1.2" stroke-dasharray="3 3" opacity=".85"/>`;
+        s += `<polygon points="${up.concat(lo.slice().reverse()).map(q => X(q[0]) + ',' + yc2(q[1])).join(' ')}" fill="${c.water}" opacity=".28"><title>95 % pásmo trendu od posledního bodu</title></polygon>` + edge(up) + edge(lo);
+      }
+    }
     if (R.sigma) { const a = Math.max(R.eta - 1.96 * R.sigma, x0), b = Math.min(R.eta + 1.96 * R.sigma, x1); s += `<rect x="${X(a)}" y="${T}" width="${Math.max(2, X(b) - X(a))}" height="${ih}" fill="${c.heat}" opacity=".14"><title>95% interval ${hmOf(R.eta - 1.96 * R.sigma)}–${hmOf(R.eta + 1.96 * R.sigma)}</title></rect>`; }
   }
   if (simPath) {
@@ -88,6 +96,17 @@ export function buildChart(o) {
     const th = last.t + o.horizonH * H, q = simAtEarly(th);
     if (q != null) s += `<circle cx="${X(th)}" cy="${Y(Math.max(y0, Math.min(y1, q)))}" r="5" fill="${c.panel}" stroke="${c.water}" stroke-width="2"><title>za ${esc(o.horizonLabel || '')}: ${nf(q)} °C</title></circle><text x="${X(th) + (X(th) > L + iw - 70 ? -8 : 8)}" y="${Y(Math.max(y0, Math.min(y1, q))) - 8}" text-anchor="${X(th) > L + iw - 70 ? 'end' : 'start'}" fill="${c.water}" font-weight="600">+${esc(o.horizonLabel || '')} ${nf(q)} °C</text>`;
   }
+  const whisker = (tc, sg, yv, col, what) => { // rozptyl času dosažení: 95 % (tenká) a 1σ (tlustá) úsečka na hladině cíle/hranice
+    if (!(sg > 0) || yv < y0 || yv > y1) return;
+    const a95 = tc - 1.96 * sg, b95 = tc + 1.96 * sg, yy = Y(yv), xa = X(Math.max(a95, x0)), xb = X(Math.min(b95, x1));
+    s += `<g><title>${what}: ${hmOf(tc)} (±${Math.round(sg / MIN)} min 1σ; 95 % ${hmOf(a95)}–${hmOf(b95)})</title>` +
+      `<line x1="${xa}" x2="${xb}" y1="${yy}" y2="${yy}" stroke="${col}" stroke-width="2"/>` +
+      `<line x1="${X(Math.max(tc - sg, x0))}" x2="${X(Math.min(tc + sg, x1))}" y1="${yy}" y2="${yy}" stroke="${col}" stroke-width="6" stroke-linecap="round"/>` +
+      (a95 >= x0 ? `<line x1="${xa}" x2="${xa}" y1="${yy - 6}" y2="${yy + 6}" stroke="${col}" stroke-width="2"/>` : '') + (b95 <= x1 ? `<line x1="${xb}" x2="${xb}" y1="${yy - 6}" y2="${yy + 6}" stroke="${col}" stroke-width="2"/>` : '') +
+      `<text x="${(xa + xb) / 2}" y="${yy + 20}" text-anchor="middle" fill="${col}" font-weight="600">${hmOf(Math.max(a95, x0))}–${hmOf(Math.min(b95, x1))}</text></g>`;
+  };
+  if (mode === 'heat' && show.model && R && R.fit && R.eta && R.sigma) whisker(R.eta, R.sigma, o.target, c.heat, 'Natopeno');
+  if (mode === 'cool' && show.model && C && C.tThr && C.sigma) whisker(C.tThr, C.sigma, o.thr, c.bad, 'Pod hranicí');
   const dot = p => {
     if (p.src === 'man') return `<circle cx="${X(p.t)}" cy="${Y(p.T)}" r="5" fill="${c.heat}" stroke="${c.panel}" stroke-width="1.5"><title>${hmOf(p.t)} ${nf(p.T)} °C (ručně${p.mix ? ', zamícháno' : ''}${p.bath ? ', koupání' : ''})</title></circle>`;
     return `<circle cx="${X(p.t)}" cy="${Y(p.T)}" r="2.6" fill="${c.water}"><title>${hmOf(p.t)} ${nf(p.T)} °C</title></circle>`;
@@ -141,6 +160,7 @@ export function buildChart(o) {
     if (Tp == null) return { t, kind: 'bez dat', sx: X(t), sy: null, amb: amb ? amb(t) : null };
     return {
       t, T: Tp, kind: 'predikce', flags: [], sx: X(t), sy: clampY(Tp), amb: amb ? amb(t) : null,
+      band: fit && mode === 'heat' ? [Tp - 1.96 * fit.se((t - fit.t0) / H), Tp + 1.96 * fit.se((t - fit.t0) / H)] : null,
       trend: { rate: mode === 'cool' ? rateCool(t, Tp) : heatRate },
       pred: mode === 'cool' ? { inH: project(t, Tp, hz), label: `za ${hzLabel} podle křivky`, tThr: C && C.tThr ? C.tThr : null } : { eta: R && R.eta ? R.eta : null },
     };

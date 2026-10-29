@@ -51,3 +51,13 @@ test('okolí ≤ 0 °C je zvýrazněno (úsek, body, čára 0 °C); při kladné
   assert.doesNotMatch(warm, /mráz/);
   assert.doesNotMatch(buildChart({ ...base, amb, show: { amb: false } }).svg, /mráz/);
 });
+
+test('graf natápění: kužel nejistoty trendu a rozptyl času dosažení cíle (95 % / 1σ)', () => {
+  const pts = A.mergePts(A.parseAllCSV(fixtureCsv(), NOW).pts.filter(p => p.t < A.zonedToEpoch(2026, 10, 26)), MANUAL.slice(0, 1));
+  const R = A.analyze(pts, { target: 40 });
+  const ch = buildChart({ W: 900, pts, mode: 'heat', R, filt: FILT, amb, target: 40, thr: 4, colors });
+  assert.match(ch.svg, /<polygon [^>]*>/); assert.match(ch.svg, /95 % pásmo trendu/);
+  assert.match(ch.svg, /Natopeno: \d\d:\d\d \(±\d+ min 1σ; 95 % \d\d:\d\d–\d\d:\d\d\)/);
+  const f = ch.info(R.eta - 10 * A.MIN); assert.ok(f.band && f.band[0] < f.T && f.band[1] > f.T);
+  assert.doesNotMatch(buildChart({ W: 900, pts, mode: 'heat', R, filt: FILT, amb, target: 40, thr: 4, colors, show: { model: false } }).svg, /<polygon/);
+});

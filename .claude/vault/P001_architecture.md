@@ -25,7 +25,8 @@ Static GitHub Pages site (vanilla ES modules, no build, no runtime deps). UI in 
 - Filtration factor: `filt.auto` (default true) → `analyzeCool` uses `Fest` estimated from current data, else manual `filt.factor`; typing a factor turns auto off.
 - Statistics section: pure `computeStats(sessions)` over current + archive (`archive[].data`), scope Vše/Aktuální; cooling drop/day excludes mix/bath/filtration pairs.
 - Ambient ≤ 0 °C is highlighted (--frost): thick curve segments, hourly dots, dotted 0 °C line, "mráz" in hover, hours ≤ 0 in stats.
-- Tests: `node --test test/*.test.js` (41 tests incl. SPEC 6.5 reference values).
+- Heating chart shows 95 % trend cone from the last point and a whisker (1σ thick, 95 % thin + times) at the target level; cooling: whisker at the threshold; hover shows 95 % band.
+- Tests: `node --test test/*.test.js` (42 tests incl. SPEC 6.5 reference values).
 
 ## Related Topics
 
