@@ -291,3 +291,38 @@ test('computeStats: koupání jako intervaly (počet, doba bez víka), páry v k
   assert.ok(S.coolPairs < noBath.coolPairs, 'páry v době koupání jsou vyloučeny');
   const open = A.computeStats([{ pts: P.filter(p => !p.bathEnd), coolStart: at(0), target: 40 }], { amb }); assert.equal(open.bathActive, true);
 });
+
+test('parseWhen: relativně (+x h/d) i absolutně (zítra 17:00, datum), čas Praha', () => {
+  const now = A.zonedToEpoch(2026, 10, 29, 23, 10), P = (s) => A.parseWhen(s, now);
+  const hm = t => A.hmOf(t), day = t => A.pragueParts(t).d;
+  assert.deepEqual([P('+12 h').kind, P('+12 h').hours], ['rel', 12]); near(P('+12 h').t, now + 12 * H, 1);
+  near(P('+1 d 4 h').hours, 28, 1e-9); near(P('+1,5d').hours, 36, 1e-9); near(P('3h').hours, 3, 1e-9); near(P('90 min').hours, 1.5, 1e-9); near(P('+2').hours, 2, 1e-9);
+  const z = P('zítra 17:00'); assert.equal(z.kind, 'abs'); assert.equal(hm(z.t), '17:00'); assert.equal(day(z.t), 30);
+  assert.equal(P('zitra v 7:30').t, A.zonedToEpoch(2026, 10, 30, 7, 30)); assert.equal(P('pozítří 8').t, A.zonedToEpoch(2026, 10, 31, 8, 0));
+  assert.equal(P('dnes 23:30').t, A.zonedToEpoch(2026, 10, 29, 23, 30));
+  assert.equal(P('17:00').t, A.zonedToEpoch(2026, 10, 30, 17, 0), 'čas už dnes uplynul → zítra');
+  assert.equal(P('23:45').t, A.zonedToEpoch(2026, 10, 29, 23, 45), 'ještě dnes');
+  assert.equal(P('30.10. 07:30').t, A.zonedToEpoch(2026, 10, 30, 7, 30)); assert.equal(P('1. 11. 2026 18:15').t, A.zonedToEpoch(2026, 11, 1, 18, 15));
+  for (const bad of ['', 'abc', '25:00', 'zítra', '+', '+0 h']) assert.equal(P(bad), null, bad);
+});
+
+test('Historický trend chladnutí: bez dat aktuálního chladnutí rozhoduje historie, s dostatkem bodů aktuální (historie jen pro srovnání)', () => {
+  const t0 = A.zonedToEpoch(2026, 10, 29, 22, 40), at = m => t0 + m * MIN, amb = A.makeAmbient([], [], 5);
+  const kCur = 0.02, kHist = 0.0129; // „aktuální“ chladne rychleji než historie
+  const mk = (n) => { const o = [{ t: at(0), T: 38.7, bathEnd: true, src: 'man' }]; let T = 38.7; for (let i = 1; i <= n; i++) { for (let s = 0; s < 10; s++) T += -kCur * (T - 5) * MIN / H; o.push({ t: at(i * 10), T: Math.round(T * 100) / 100, src: 'csv' }); } return o; };
+  const base = { coolStart: at(0), amb, thr: 4, F: 1.5, filt: [], horizonH: 8 };
+  const none = A.analyzeCool(mk(0).concat([{ t: at(1), T: 38.7 }]).slice(0, 1).concat(mk(0)), base);
+  const c0 = A.analyzeCool(mk(0), { ...base, kHist }), c0n = A.analyzeCool(mk(0), base);
+  assert.equal(c0n.k, undefined); assert.match(c0n.msg || '', /Zapiš teplotu/);                   // bez historie: čekání
+  assert.equal(c0.kSrc, 'historie'); near(c0.k, kHist, 1e-12); assert.ok(c0.inH < 38.7 && c0.hist.inH === c0.inH);
+  const c1 = A.analyzeCool(mk(1), { ...base, kHist }); assert.equal(c1.kSrc, 'mix'); assert.ok(c1.kW < 0.2);
+  const c3 = A.analyzeCool(mk(4), { ...base, kHist });                                           // pár párů: mix
+  assert.equal(c3.kSrc, 'mix'); assert.ok(c3.k > kHist && c3.k < kCur + 1e-9); assert.ok(c3.kW > 0 && c3.kW < 1);
+  const c8 = A.analyzeCool(mk(12), { ...base, kHist }), c8n = A.analyzeCool(mk(12), base);
+  assert.equal(c8.kSrc, 'aktuální'); near(c8.k, kCur, 0.002); assert.equal(c8.k, c8n.k); assert.equal(c8.inH, c8n.inH); // historie prediction nemění
+  assert.ok(c8.hist && c8.hist.inH > c8.inH, 'historie chladne pomaleji → vyšší teplota (srovnání)'); near(c8.hist.k, kHist, 1e-12);
+  // historicalCool z úseku s dostatkem bodů
+  const H1 = A.historicalCool([{ pts: mk(20), coolStart: at(0) }, { pts: [], coolStart: 0 }], { amb, filt: [] });
+  assert.ok(H1 && H1.pairs >= 10); near(H1.k, kCur, 0.003); assert.equal(A.historicalCool([], { amb }), null);
+  assert.equal(none.ok, true);
+});

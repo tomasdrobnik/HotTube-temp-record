@@ -83,9 +83,12 @@
         </span>
       </label>
       <div class="row">
-        <label>Vlastní<input id="horVal" class="w5" inputmode="decimal" placeholder="x" autocomplete="off"></label>
+        <label>Vlastní +<input id="horVal" class="w5" inputmode="decimal" placeholder="x" autocomplete="off"></label>
         <label>jednotka<select id="horUnit"><option value="h">h</option><option value="d">d</option></select></label>
+        <label>Kdy (text)<input id="predWhen" placeholder="zítra 17:00 · +12 h · 30.10. 07:30" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <label>Kdy (datum a čas)<input id="predAt" type="datetime-local"></label>
       </div>
+      <div id="predMsg" class="msg" aria-live="polite"></div>
     </div>
     <div id="notes" class="notes small"></div>
   </div>

@@ -13,7 +13,10 @@ const pn = s => parseFloat(String(s).trim().replace(',', '.'));
 const fmt = hmOf;
 const fmtD = (t, ref) => { const a = A.pragueParts(t), b = A.pragueParts(ref); return fmt(t) + (a.d === b.d && a.mo === b.mo ? '' : ` (${a.d}. ${a.mo}.)`); };
 const hLabel = h => h >= 24 && (h % 24 === 0 || h >= 48) ? `${nf(h / 24, (h / 24) % 1 ? 1 : 0)} d` : `${nf(h, h % 1 ? 1 : 0)} h`;
+const whenLabel = (t, now) => { const a = A.pragueParts(t), b = A.pragueParts(now), dd = Math.round((Date.UTC(a.y, a.mo - 1, a.d) - Date.UTC(b.y, b.mo - 1, b.d)) / 86400000);
+  return (dd === 0 ? 'Dnes' : dd === 1 ? 'Zítra' : dd === 2 ? 'Pozítří' : `${a.d}. ${a.mo}.`) + ' ' + fmt(t); };
 const fmtN = t => fmtD(t, Date.now());   // datum se přidá, když to není dnes
+const fmtDur = ms => { const m = Math.max(0, Math.round(ms / MIN)), dd = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60; return dd ? `${dd} d ${hh} h` : hh ? `${hh} h ${mm} min` : `${mm} min`; };
 const fmtSince = ms => { const m = Math.max(0, Math.round(ms / MIN)); return `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} h`; };
 const toLocalInput = t => { const p = A.pragueParts(t), z = n => String(n).padStart(2, '0'); return `${p.y}-${z(p.mo)}-${z(p.d)}T${z(p.h)}:${z(p.mi)}`; };
 const fromLocalInput = v => { const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/); return m ? A.zonedToEpoch(+m[1], +m[2], +m[3], +m[4], +m[5]) : null; };
@@ -23,7 +26,7 @@ const rnd5 = t => Math.ceil(t / (5 * MIN)) * 5 * MIN;
 const UI_KEY = 'hottube.ui', DEV_KEY = 'hottube.device';
 const kvGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const kvSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* UI nastavení je nepovinné */ } };
-const ui = { open: {}, winMin: 60, sound: false, range: 'auto', ahead: 0, coolHorizon: 1, statsScope: 'all', show: {}, ...(kvGet(UI_KEY) || {}) };
+const ui = { open: {}, winMin: 60, sound: false, range: 'auto', ahead: 0, coolHorizon: 1, predAt: null, statsScope: 'all', show: {}, ...(kvGet(UI_KEY) || {}) };
 const saveUi = () => kvSet(UI_KEY, ui);
 
 function deviceName() {
@@ -55,8 +58,27 @@ function derive() {
   d.baths = A.bathIntervals(pts); d.bathing = A.bathingNow(d.baths);
   d.heatStart = A.heatStartOf(ss, manual);
   d.R = A.analyze(pts, { target: ss.target, winMin: ui.winMin, manualOnly: base.pts.length === 0, prior: d.prior, heatStart: d.heatStart });
-  if (d.cool) d.C = A.analyzeCool(pts, { coolStart: ss.coolStart, amb, thr: ss.coolThr, F: st.filt.factor, filt, horizonH: ui.coolHorizon || 1, autoF: st.filt.auto !== false });
+  if (d.cool) {
+    const lastT = pts.length ? pts[pts.length - 1].t : now;
+    if (ui.predAt != null && ui.predAt <= now) { ui.predAt = null; saveUi(); }     // zvolený čas už uplynul → zpět na relativní
+    const relH = ui.coolHorizon || 1, tt = ui.predAt ?? now + relH * H;
+    d.pred = { t: tt, abs: ui.predAt != null, label: ui.predAt != null ? whenLabel(tt, now) : 'za ' + hLabel(relH), tile: ui.predAt != null ? whenLabel(tt, now) : 'Za ' + hLabel(relH), hz: Math.min(14 * 24, Math.max(0.02, (tt - lastT) / H)) };
+    d.hist = histCool(d);
+    d.C = A.analyzeCool(pts, { coolStart: ss.coolStart, amb, thr: ss.coolThr, F: st.filt.factor, filt, horizonH: d.pred.hz, autoF: st.filt.auto !== false, kHist: d.hist ? d.hist.k : null });
+  }
   return d;
+}
+
+/* ===== historický trend chladnutí (archiv + data před začátkem natápění) ===== */
+let histCache = { key: '', val: null };
+function histCool(d) {
+  const st = d.st, key = [st.archive.map(a => a.closedAt).join(','), d.heatStart, d.pts.length, weather.fetchedAt, JSON.stringify(d.filt), st.filt.factor, st.filt.auto].join('|');
+  if (histCache.key === key) return histCache.val;
+  const sess = st.archive.filter(a => a.data && a.data.session && a.data.session.coolStart != null).map(a => ({
+    pts: A.mergePts(A.parseAllCSV(a.data.csv || [], Date.now()).pts, a.data.manual || []), coolStart: a.data.session.coolStart, label: 'archiv ' + new Date((a.summary && a.summary.start) || a.closedAt).toLocaleDateString('cs-CZ', { timeZone: A.TZ, day: 'numeric', month: 'numeric' }) }));
+  if (d.heatStart != null) { const P = d.pts.filter(p => p.t < d.heatStart); if (P.length >= 12) sess.push({ pts: P, coolStart: P[0].t, label: 'před startem natápění' }); }
+  const val = A.historicalCool(sess, { amb: d.amb, filt: d.filt, F: st.filt.factor, autoF: st.filt.auto !== false });
+  histCache = { key, val }; return val;
 }
 
 /* ===== zvuk ===== */
@@ -171,24 +193,25 @@ function renderCool(d) {
   if (C.check) { const z = C.check.z; chk = Math.abs(z) <= 2 ? ['Na křivce', 'ok'] : z < -2 ? ['Chladne rychleji', 'warn'] : ['Chladne pomaleji', 'ok']; }
   if (C.bathing) {
     const since = fmtSince(d.now - C.bathSince).replace(/^0 d /, '');
-    setTile('tEta', 'warn', tl, 'Koupání', 'víko sejmuto'); setTile('tTrend', 'warn', 'Pokles', '–', 'koupání probíhá'); setTile('tProb', '', 'Za ' + hLabel(ui.coolHorizon || 1), '–', 'po ukončení koupání');
+    setTile('tEta', 'warn', tl, 'Koupání', 'víko sejmuto'); setTile('tTrend', 'warn', 'Pokles', '–', 'koupání probíhá'); setTile('tProb', '', d.pred.tile, '–', 'po ukončení koupání');
     showAlert('warn', `<b>Koupání probíhá</b> od ${fmtN(C.bathSince)} (${since}) – víko je sejmuto, voda chladne rychleji. Po koupání zapiš teplotu se značkou „koupání ukončeno“ (víko zpět); od ní se křivka počítá znovu.`, 'bathing@' + C.bathSince);
     $('entryFb').innerHTML = `<span>Poslední ${fmtN(C.last.t)} <b class="num">${nf(C.last.T)} °C</b></span><span class="tag warn">Koupání</span><span class="small">zápisy při koupání se do křivky chladnutí nepočítají</span>`;
     const bi = C.baths.at(-1);
     $('notes').innerHTML = lastHeatLine(d) + `<div><b>Koupání</b> od ${fmtD(C.bathSince, d.now)}: zápisů při koupání ${bi.n}${bi.n ? ', Ø ' + nf(bi.sum / bi.n) + ' °C' : ''}. Predikce poklesu je pozastavena.</div>`;
     return;
   }
-  if (!C.ok) { setTile('tEta', '', tl, '–', 'zapiš teplotu'); setTile('tTrend', '', 'Pokles', '–'); setTile('tProb', '', 'Za ' + hLabel(ui.coolHorizon || 1), '–'); }
+  if (!C.ok) { setTile('tEta', '', tl, '–', 'zapiš teplotu'); setTile('tTrend', '', 'Pokles', '–'); setTile('tProb', '', d.pred.tile, '–'); }
   else {
     const now = C.last.t;
     if (C.below) setTile('tEta', 'bad', tl, fmtN(C.below), 'už pod hranicí');
     else if (C.tThr) { const left = (C.tThr - now) / MIN; setTile('tEta', left > 60 ? 'ok' : left > 15 ? 'warn' : 'bad', tl, fmtN(C.tThr), C.sigma ? '± ' + Math.round(C.sigma / MIN) + ' min' : 'za ' + Math.round(left) + ' min · předběžně'); }
-    else if (C.in48h != null) setTile('tEta', 'ok', tl, '> 48 h', `za 48 h ${nf(C.in48h)} °C`);
+    else if (C.in48h != null) setTile('tEta', 'ok', tl, '> 48 h', `za 48 h ${nf(C.in48h)} °C${C.kSrc !== 'aktuální' ? ' · předběžně' : ''}`);
     else setTile('tEta', 'ok', tl, '–', C.rising ? 'zatím neklesá' : C.mixAt && !C.fit ? 'po zamíchání' : 'hranice pod okolím');
     const r = C.rateNow != null ? -C.rateNow : -C.rateShort;
     const st = C.lastInFilt ? 'Filtrace' : C.rising ? 'Dohřívá z ohniště' : C.lastIsBathEnd ? 'Koupání ukončeno' : C.lastIsBath ? 'Po koupání' : C.lastIsMix ? 'Po zamíchání' : chk ? chk[0] : C.fit && !C.check ? 'Málo bodů' : '';
     setTile('tTrend', C.rising || C.lastInFilt || C.lastIsMix ? 'ok' : chk ? chk[1] : '', 'Pokles', (r > 0 ? '−' : '+') + nf(Math.abs(r)), '°C/h' + (st ? ' · ' + st : ''));
-    if (C.inH != null) setTile('tProb', C.inH > thr ? 'ok' : 'bad', 'Za ' + hLabel(C.horizonH ?? ui.coolHorizon ?? 1), nf(C.inH) + ' °C', C.inH > thr ? 'podle křivky' : 'pod hranicí podle křivky'); else setTile('tProb', '', 'Za ' + hLabel(C.horizonH ?? ui.coolHorizon ?? 1), '–');
+    const srcTxt = C.kSrc === 'historie' ? 'předběžně z historie' : C.kSrc === 'mix' ? `aktuální + historie (${Math.round(C.kW * 100)} % akt.)` : 'podle aktuální křivky';
+    if (C.inH != null) setTile('tProb', C.inH > thr ? 'ok' : 'bad', d.pred.tile, nf(C.inH) + ' °C', (C.inH > thr ? srcTxt : 'pod hranicí · ' + srcTxt) + (C.hist && C.kSrc !== 'historie' ? ` · hist. ${nf(C.hist.inH)} °C` : '')); else setTile('tProb', '', d.pred.tile, '–');
   }
   let a = null;
   if (C.ok && C.below) a = ['bad', `<b>Teplota pod hranicí ${nt(thr)} °C</b> od ${fmtN(C.below)} (teď ${nf(C.last.T)} °C).`];
@@ -211,9 +234,16 @@ function renderCool(d) {
   }
   const n = [lastHeatLine(d)], amb = d.amb;
   n.push(`<div>Konec natápění ${fmtN(ss.coolStart)}${C.peak ? ` · maximum ${nf(C.peak.T)} °C v ${fmt(C.peak.t)}` : ''}${C.mixAt ? ` · poslední zamíchání/koupání ${fmt(C.mixAt)} (křivka od něj)` : ''}.</div>`);
-  if (C.last) n.push(`<div>Okolí: ${esc(amb.src)} – teď ${nf(C.Ta)} °C${C.inH != null ? `, za ${hLabel(C.horizonH ?? ui.coolHorizon ?? 1)} ${nf(amb(C.last.t + C.horizonH * H))} °C` : ''}.${amb.fallback ? ' <b>Pozor: není předpověď, odhad je méně spolehlivý.</b>' : ''}</div>`);
-  if (C.fit) n.push(`<div>Křivka chladnutí: k = ${nf(C.k, 3)} /h (poločas rozdílu proti okolí ${nf(Math.log(2) / C.k, 1)} h), z ${C.fit.n} bodů.${C.tThr ? ` Pod ${nt(thr)} °C v ${fmtD(C.tThr, C.last.t)}${C.sigma ? ` (95% ${fmt(C.tThr - 1.96 * C.sigma)}–${fmt(C.tThr + 1.96 * C.sigma)})` : ''}.` : ''}</div>`);
-  if (C.inH != null) n.push(`<div><b>Predikce za ${hLabel(C.horizonH ?? ui.coolHorizon ?? 1)}:</b> ${nf(C.inH)} °C (${C.inH <= thr ? 'pod hranicí ' + nt(thr) + ' °C' : nf(C.last.T - C.inH) + ' °C pokles, tj. ' + nf((C.last.T - C.inH) / C.horizonH, 2) + ' °C/h v průměru'}) · v čase ${fmtD(C.last.t + C.horizonH * H, C.last.t)}. Platí pro aktuální křivku a předpověď okolí.</div>`);
+  if (C.last) n.push(`<div>Okolí: ${esc(amb.src)} – teď ${nf(C.Ta)} °C${C.inH != null ? `, ${d.pred.label} ${nf(amb(d.pred.t))} °C` : ''}.${amb.fallback ? ' <b>Pozor: není předpověď, odhad je méně spolehlivý.</b>' : ''}</div>`);
+  if (C.k > 0 && C.kSrc) {
+    const srcLbl = { aktuální: `z aktuálního chladnutí (${C.kPairs} párů)`, mix: `míchá aktuální (${C.kPairs} párů, váha ${Math.round(C.kW * 100)} %) s historií`, historie: 'z historického trendu – po zamíchání/koupání je zatím málo aktuálních bodů' }[C.kSrc];
+    n.push(`<div><b>Křivka chladnutí:</b> k = ${nf(C.k, 4)} /h (poločas rozdílu proti okolí ${nf(Math.log(2) / C.k, 1)} h) ${srcLbl}.${C.tThr ? ` Pod ${nt(thr)} °C v ${fmtD(C.tThr, C.last.t)}${C.sigma ? ` (95% ${fmt(C.tThr - 1.96 * C.sigma)}–${fmt(C.tThr + 1.96 * C.sigma)})` : ''}.` : ''} Aktuální data mají přednost; od ${CONFIG.coolMinPairs} párů se historie nepoužije.</div>`);
+  }
+  if (C.hist && d.hist) {
+    const it = d.hist.items.map(i => `${esc(i.label)} k ${nf(i.k, 4)}`).join(', ');
+    n.push(`<div><b>Historický trend:</b> k = ${nf(C.hist.k, 4)} /h (${d.hist.pairs} párů z ${d.hist.items.length} úseků: ${it}) → ${d.pred.label} ${nf(C.hist.inH)} °C${C.inH != null ? ` (aktuální křivka ${nf(C.inH)} °C, rozdíl ${C.inH - C.hist.inH >= 0 ? '+' : ''}${nf(C.inH - C.hist.inH)} °C)` : ''}${C.hist.tThr ? `; pod ${nt(thr)} °C v ${fmtD(C.hist.tThr, C.last.t)}` : ''}. Jen pro srovnání (neověřeno).</div>`);
+  } else if (C.ok) n.push('<div class="small">Historický trend zatím není – chybí dřívější úsek chladnutí (archiv nebo data před startem natápění).</div>');
+  if (C.inH != null) n.push(`<div><b>Predikce ${esc(d.pred.label)}</b> (${fmtD(d.pred.t, d.now)}, za ${fmtDur(d.pred.t - d.now)}): <b>${nf(C.inH)} °C</b> (${C.inH <= thr ? 'pod hranicí ' + nt(thr) + ' °C' : nf(C.last.T - C.inH) + ' °C pokles od posledního bodu, tj. ' + nf((C.last.T - C.inH) / C.horizonH, 2) + ' °C/h v průměru'}). Platí pro aktuální křivku a předpověď okolí.</div>`);
   const nx = A.filtWins(d.filt, d.now, d.now + 24 * H)[0];
   n.push(`<div>Filtrace: zrychlení ×${nf(C.F, 2)} (${C.Fsrc === 'data' ? 'z aktuálních dat' : 'ručně zadaný faktor'}${C.Fest && C.Fsrc !== 'data' ? `, z dat by vyšlo ×${nf(C.Fest, 2)}` : ''})${nx ? ` · další ${fmt(nx.a)}–${fmt(nx.b)}` : ''}.</div>`);
   if (C.ok) n.push(`<div>Posledních ${Math.round((C.last.t - C.rateShortFrom) / MIN)} min: ${nf(C.rateShort)} °C/h.</div>`); else n.push(`<div>${esc(C.msg)}</div>`);
@@ -249,7 +279,7 @@ function addStoke(d, t) {
 }
 
 /* ===== graf ===== */
-let chartCtx = null;
+let chartCtx = null, chartPressed = false;
 function hideTip() { $('tip').hidden = true; const g = $('hv'); if (g) g.setAttribute('visibility', 'hidden'); }
 function tipHtml(i) {
   const p = A.pragueParts(i.t), r = [];
@@ -265,6 +295,7 @@ function tipHtml(i) {
   const pr = i.pred;
   if (pr) {
     if (pr.inH != null) r.push(`Predikce: ${pr.label} ${nf(pr.inH)} °C`);
+    const hv = pr.histH ?? pr.histAt; if (hv != null) r.push(`<span class="small">Historie: ${nf(hv)} °C</span>`);
     if (pr.eta) r.push(`Predikce: natopeno ${fmtD(pr.eta, i.t)}`);
     if (pr.tThr) r.push(`Predikce: pod hranicí ${fmtD(pr.tThr, i.t)}`);
   }
@@ -287,19 +318,21 @@ function onChartMove(e) {
   tip.style.left = left + 'px'; tip.style.top = '6px';
 }
 function renderChart() {
+  if (chartPressed) return; // během držení se graf nepřekresluje (tooltip by zmizel)
   const open = $('secChart').open; if (!open || !D || !D.pts.length) { chartCtx = null; $('chart').innerHTML = D && D.pts.length ? '' : '<span class="small">Žádná data.</span>'; return; }
   const cs = getComputedStyle(document.documentElement), c = {};
   for (const k of ['line', 'muted', 'water', 'heat', 'bad', 'pause', 'panel', 'fg', 'frost']) c[k] = cs.getPropertyValue('--' + k).trim();
-  chartCtx = buildChart({ W: $('chart').clientWidth, rangeH: ui.range === 'auto' ? undefined : +ui.range, aheadMs: (ui.ahead || 0) * H, baths: D.baths, horizonH: ui.coolHorizon || 1, horizonLabel: hLabel(ui.coolHorizon || 1), show: ui.show, pts: D.pts, mode: D.cool ? 'cool' : 'heat', R: D.R, C: D.C, filt: D.filt, amb: D.amb, target: D.ss.target, thr: D.ss.coolThr, coolStart: D.ss.coolStart, colors: c });
+  chartCtx = buildChart({ W: $('chart').clientWidth, rangeH: ui.range === 'auto' ? undefined : +ui.range, aheadMs: (ui.ahead || 0) * H, baths: D.baths, horizonH: D.pred ? D.pred.hz : 1, horizonLabel: D.pred ? D.pred.label : 'za 1 h', show: ui.show, pts: D.pts, mode: D.cool ? 'cool' : 'heat', R: D.R, C: D.C, filt: D.filt, amb: D.amb, target: D.ss.target, thr: D.ss.coolThr, coolStart: D.ss.coolStart, colors: c });
   $('chart').innerHTML = chartCtx.svg; hideTip();
   $('legend').innerHTML = '<span><i class="lg-water"></i>čidlo</span><span><i class="lg-heat"></i>ruční zápis</span><span><i class="lg-frost"></i>okolí ≤ 0 °C</span><span><i class="lg-water dash"></i>' + (D.cool ? 'predikce' : 'trend') + '</span><span>modré pruhy = filtrace</span>' + (D.cool ? '<span>šedá zóna = od konce natápění</span>' : '<span>šedé pruhy = pauzy ohřevu</span>');
 }
 
 function syncHorizon() {
-  const h = ui.coolHorizon || 1, presets = [...document.querySelectorAll('[data-hor]')].map(b => +b.dataset.hor);
-  document.querySelectorAll('[data-hor]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.hor === h)));
+  const h = ui.coolHorizon || 1, presets = [...document.querySelectorAll('[data-hor]')].map(b => +b.dataset.hor), abs = ui.predAt != null;
+  document.querySelectorAll('[data-hor]').forEach(b => b.setAttribute('aria-pressed', String(!abs && +b.dataset.hor === h)));
+  if (D && D.pred && document.activeElement !== $('predAt')) $('predAt').value = toLocalInput(D.pred.t);
   if (document.activeElement !== $('horVal') && document.activeElement !== $('horUnit')) {
-    const custom = !presets.includes(h), d = custom && h % 24 === 0;
+    const custom = !abs && !presets.includes(h), d = custom && h % 24 === 0;
     $('horVal').value = custom ? nf(d ? h / 24 : h, (d ? h / 24 : h) % 1 ? 1 : 0) : ''; $('horUnit').value = d ? 'd' : 'h';
   }
 }
@@ -565,10 +598,30 @@ function bind() {
     const rows = store.state.manual.filter(m => !m.deleted).sort((a, b) => a.t - b.t).map(m => [new Date(m.t).toISOString(), `${A.pragueParts(m.t).d}.${A.pragueParts(m.t).mo}.${A.pragueParts(m.t).y} ${fmt(m.t)}`, m.T, m.amb ?? '', m.ambSrc ?? '', m.mix ? 1 : 0, m.bath ? 1 : 0, m.bathEnd ? 1 : 0, m.stoke ? 1 : 0, q(m.note)].join(';'));
     download(`hottube-zapisy-${stamp()}.csv`, 'text/csv', ['iso_utc;cas_praha;teplota_c;okoli_c;okoli_zdroj;zamichano;koupani_vicko_pryc;koupani_ukonceno;prilozeno;poznamka', ...rows].join('\n') + '\n');
   });
-  document.querySelectorAll('[data-hor]').forEach(b => b.addEventListener('click', () => { ui.coolHorizon = +b.dataset.hor; saveUi(); render(); }));
-  const customHor = () => { const v = pn($('horVal').value); if (isFinite(v) && v > 0) { ui.coolHorizon = Math.min(v * ($('horUnit').value === 'd' ? 24 : 1), 14 * 24); saveUi(); render(); } };
+  document.querySelectorAll('[data-hor]').forEach(b => b.addEventListener('click', () => { ui.coolHorizon = +b.dataset.hor; ui.predAt = null; $('predWhen').value = ''; $('predMsg').textContent = ''; saveUi(); render(); }));
+  const customHor = () => { const v = pn($('horVal').value); if (isFinite(v) && v > 0) { ui.coolHorizon = Math.min(v * ($('horUnit').value === 'd' ? 24 : 1), 14 * 24); ui.predAt = null; saveUi(); render(); } };
+  const applyWhen = () => { // „Kolik bude stupňů – kdy“: absolutně (zítra 17:00, 30.10. 07:30) nebo relativně (+12 h, +1 d 4 h)
+    const txt = $('predWhen').value, msg = $('predMsg'), now = Date.now(); if (!txt.trim()) return;
+    const r = A.parseWhen(txt, now);
+    if (!r) { msg.className = 'msg bad'; msg.textContent = 'Nerozumím. Zkus např. „zítra 17:00“, „dnes 23:30“, „30.10. 07:30“, „+12 h“, „+1 d 4 h“.'; return; }
+    if (r.t <= now) { msg.className = 'msg bad'; msg.textContent = 'Zvolený čas už uplynul.'; return; }
+    if (r.t - now > 14 * 24 * H) { msg.className = 'msg bad'; msg.textContent = 'Nejvýš 14 dní dopředu.'; return; }
+    if (r.kind === 'rel') { ui.coolHorizon = r.hours; ui.predAt = null; } else ui.predAt = r.t;
+    msg.className = 'msg ok'; msg.textContent = `Rozumím: ${fmtD(r.t, 0)} (za ${fmtDur(r.t - now)}).`; saveUi(); render();
+  };
+  $('predWhen').addEventListener('change', applyWhen); $('predWhen').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyWhen(); } });
+  $('predAt').addEventListener('change', () => { const t = fromLocalInput($('predAt').value), now = Date.now(); if (t == null) return;
+    if (t <= now) { $('predMsg').className = 'msg bad'; $('predMsg').textContent = 'Zvolený čas už uplynul.'; return; }
+    ui.predAt = t; $('predWhen').value = ''; $('predMsg').className = 'msg ok'; $('predMsg').textContent = `Zvoleno: ${fmtD(t, 0)} (za ${fmtDur(t - now)}).`; saveUi(); render(); });
   $('horVal').addEventListener('input', customHor); $('horUnit').addEventListener('change', customHor);
-  $('chart').addEventListener('pointermove', onChartMove); $('chart').addEventListener('pointerdown', onChartMove); $('chart').addEventListener('pointerleave', hideTip);
+  { // tooltip jen při stisknutí a podržení (na mobilu dlouhý stisk jinak označuje/kopíruje text)
+    const ch = $('chart'), endPress = () => { chartPressed = false; hideTip(); };
+    ch.addEventListener('pointerdown', e => { chartPressed = true; try { ch.setPointerCapture(e.pointerId); } catch { /* bez capture */ } onChartMove(e); });
+    ch.addEventListener('pointermove', e => { if (chartPressed) onChartMove(e); });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => ch.addEventListener(ev, endPress));
+    ch.addEventListener('contextmenu', e => e.preventDefault());
+    ch.addEventListener('selectstart', e => e.preventDefault());
+  }
   document.querySelectorAll('[data-sc]').forEach(b => b.addEventListener('click', () => { ui.statsScope = b.dataset.sc; saveUi(); renderStats(); }));
   // graf: rozsah a viditelnost
   document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => { ui.range = b.dataset.range; saveUi(); syncChartCtl(); renderChart(); }));

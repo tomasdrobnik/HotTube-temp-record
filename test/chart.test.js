@@ -33,9 +33,9 @@ test('hover pokles: měřený bod má rychlost poklesu a predikci za 1 h, za kon
   const ch = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, aheadMs: 24 * A.H });
   const i = ch.info(pts.at(-1).t - 30 * A.MIN);
   assert.equal(i.kind, 'měřeno'); assert.ok(i.trend.rate < 0); assert.ok(i.pred.inH < i.T); assert.match(i.pred.label, /za 1 h/);
-  const ch8 = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, aheadMs: 24 * A.H, horizonH: 8, horizonLabel: '8 h' });
+  const ch8 = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, aheadMs: 24 * A.H, horizonH: 8, horizonLabel: 'za 8 h' });
   const i8 = ch8.info(pts.at(-1).t - 30 * A.MIN); assert.match(i8.pred.label, /za 8 h/); assert.ok(i8.pred.inH < i.pred.inH);
-  assert.match(ch8.svg, /\+8 h \d+,\d °C/); // značka bodu horizontu na křivce
+  assert.match(ch8.svg, />za 8 h \d+,\d °C</); // značka bodu horizontu na křivce
   const f8 = ch8.info(pts.at(-1).t + 2 * A.H); assert.ok(f8.pred.inH < f8.T);
   const f = ch.info(pts.at(-1).t + 6 * A.H);
   assert.equal(f.kind, 'predikce'); assert.ok(f.T < pts.at(-1).T); assert.ok(f.trend.rate < 0);
@@ -60,4 +60,15 @@ test('graf natápění: kužel nejistoty trendu a rozptyl času dosažení cíle
   assert.match(ch.svg, /Natopeno: \d\d:\d\d \(±\d+ min 1σ; 95 % \d\d:\d\d–\d\d:\d\d\)/);
   const f = ch.info(R.eta - 10 * A.MIN); assert.ok(f.band && f.band[0] < f.T && f.band[1] > f.T);
   assert.doesNotMatch(buildChart({ W: 900, pts, mode: 'heat', R, filt: FILT, amb, target: 40, thr: 4, colors, show: { model: false } }).svg, /<polygon/);
+});
+
+test('graf poklesu: historický trend pro srovnání (druhá křivka + hover „Historie“) a absolutní cíl', () => {
+  const pts = allPts(), hist = 0.008;
+  const C = A.analyzeCool(pts, { coolStart: MANUAL[1].t, amb, thr: 4, F: 1.5, filt: FILT, horizonH: 6, kHist: hist });
+  assert.ok(C.hist && C.hist.inH > C.inH, 'pomalejší historie → vyšší teplota');
+  const ch = buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, aheadMs: 24 * A.H, horizonH: 6, horizonLabel: 'Zítra 17:00' });
+  assert.match(ch.svg, /historický trend chladnutí/); assert.match(ch.svg, />Zítra 17:00 \d+,\d °C</);
+  const i = ch.info(pts.at(-1).t - 20 * A.MIN); assert.ok(i.pred.histH != null && i.pred.histH > i.pred.inH); assert.match(i.pred.label, /^Zítra 17:00 podle křivky/);
+  const f = ch.info(pts.at(-1).t + 3 * A.H); assert.ok(f.pred.histAt != null && f.pred.histAt > f.T);
+  assert.doesNotMatch(buildChart({ W: 900, pts, mode: 'cool', C, filt: FILT, amb, thr: 4, target: 40, coolStart: MANUAL[1].t, colors, show: { model: false } }).svg, /historický trend/);
 });

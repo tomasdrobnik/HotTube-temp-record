@@ -32,8 +32,9 @@ export function buildChart(o) {
   const ambS = []; if (amb && show.amb) { const n = Math.max(48, Math.min(400, Math.round((x1 - x0) / (30 * MIN)))); for (let i = 0; i <= n; i++) { const t = x0 + (x1 - x0) * i / n; ambS.push([t, amb(t)]); } }
   const refY = mode === 'cool' ? o.thr : o.target;
   const simAtEarly = t => { if (!simPath) return null; for (let i = 1; i < simPath.length; i++) if (simPath[i][0] >= t) { const a = simPath[i - 1], b = simPath[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return simPath[simPath.length - 1][1]; };
-  const simPath = mode === 'cool' && show.model && C && C.fit && C.k > 0 && C.sim ? C.sim(x1) : null;
-  let y0 = Math.min(...vis.map(p => p.T), refY, ...ambS.map(a => a[1]), ...(simPath ? simPath.map(q => q[1]) : []));
+  const simPath = mode === 'cool' && show.model && C && C.k > 0 && C.sim ? C.sim(x1) : null;
+  const histPath = mode === 'cool' && show.model && C && C.hist && C.hist.sim ? C.hist.sim(x1) : null;
+  let y0 = Math.min(...vis.map(p => p.T), refY, ...ambS.map(a => a[1]), ...(simPath ? simPath.map(q => q[1]) : []), ...(histPath ? histPath.map(q => q[1]) : []));
   let y1 = Math.max(...vis.map(p => p.T), refY);
   y0 = Math.floor((y0 - 1) / 5) * 5; y1 = Math.ceil((y1 + 1) / 5) * 5;
   const X = t => L + (t - x0) / (x1 - x0) * iw, Y = v => T + (1 - (v - y0) / (y1 - y0)) * ih;
@@ -92,13 +93,17 @@ export function buildChart(o) {
     }
     if (R.sigma) { const a = Math.max(R.eta - 1.96 * R.sigma, x0), b = Math.min(R.eta + 1.96 * R.sigma, x1); s += `<rect x="${X(a)}" y="${T}" width="${Math.max(2, X(b) - X(a))}" height="${ih}" fill="${c.heat}" opacity=".14"><title>95% interval ${hmOf(R.eta - 1.96 * R.sigma)}–${hmOf(R.eta + 1.96 * R.sigma)}</title></rect>`; }
   }
+  if (histPath) { // historický trend chladnutí pro srovnání
+    const hp = histPath.filter(q => q[1] >= y0).map(q => X(q[0]) + ',' + Y(Math.min(q[1], y1)));
+    s += `<polyline points="${hp.join(' ')}" fill="none" stroke="${c.heat}" stroke-width="1.8" stroke-dasharray="2 4" stroke-linecap="round"><title>historický trend chladnutí (k = ${nf(C.hist.k, 3)} /h)</title></polyline>`;
+  }
   if (simPath) {
     const pl = simPath.filter(q => q[1] >= y0).map(q => X(q[0]) + ',' + Y(Math.min(q[1], y1)));
     s += `<polyline points="${pl.join(' ')}" fill="none" stroke="${c.water}" stroke-width="2" stroke-dasharray="5 4"/>`;
   }
   if (simPath && o.horizonH > 0 && last.t + o.horizonH * H >= x0 && last.t + o.horizonH * H <= x1) {
     const th = last.t + o.horizonH * H, q = simAtEarly(th);
-    if (q != null) s += `<circle cx="${X(th)}" cy="${Y(Math.max(y0, Math.min(y1, q)))}" r="5" fill="${c.panel}" stroke="${c.water}" stroke-width="2"><title>za ${esc(o.horizonLabel || '')}: ${nf(q)} °C</title></circle><text x="${X(th) + (X(th) > L + iw - 70 ? -8 : 8)}" y="${Y(Math.max(y0, Math.min(y1, q))) - 8}" text-anchor="${X(th) > L + iw - 70 ? 'end' : 'start'}" fill="${c.water}" font-weight="600">+${esc(o.horizonLabel || '')} ${nf(q)} °C</text>`;
+    if (q != null) s += `<circle cx="${X(th)}" cy="${Y(Math.max(y0, Math.min(y1, q)))}" r="5" fill="${c.panel}" stroke="${c.water}" stroke-width="2"><title>${esc(o.horizonLabel || '')}: ${nf(q)} °C</title></circle><text x="${X(th) + (X(th) > L + iw - 90 ? -8 : 8)}" y="${Y(Math.max(y0, Math.min(y1, q))) - 8}" text-anchor="${X(th) > L + iw - 90 ? 'end' : 'start'}" fill="${c.water}" font-weight="600">${esc(o.horizonLabel || '')} ${nf(q)} °C</text>`;
   }
   const whisker = (tc, sg, yv, col, what) => { // rozptyl času dosažení: 95 % (tenká) a 1σ (tlustá) úsečka na hladině cíle/hranice
     if (!(sg > 0) || yv < y0 || yv > y1) return;
@@ -133,17 +138,18 @@ export function buildChart(o) {
   const fit = mode === 'heat' && R && R.fit ? R.fit : null;
   const heatRate = mode === 'heat' && R ? (fit ? fit.b : R.rate) : null;
   const trendAt = t => fit ? fit.pred((t - fit.t0) / H) : (heatRate != null && R.last ? R.last.T + heatRate * (t - R.last.t) / H : null);
-  const k = mode === 'cool' && C && C.fit && C.k > 0 ? C.k : null;
+  const k = mode === 'cool' && C && C.k > 0 ? C.k : null, kh = mode === 'cool' && C && C.hist ? C.hist.k : null;
   const fac = t => inFilt(filt, t) ? (C.F || 1) : 1;
   const rateCool = (t, Tv) => k ? -k * fac(t) * (Tv - amb(t)) : null;
-  const project = (t, Tv, hours) => { if (!k) return null; let q = t, TT = Tv; const end = t + hours * H; while (q < end) { const dt = Math.min(5 * MIN, end - q), tm = q + dt / 2; TT += -k * fac(tm) * (TT - amb(tm)) * dt / H; q += dt; } return TT; };
+  const project = (t, Tv, hours, kk = k) => { if (!kk) return null; let q = t, TT = Tv; const end = t + hours * H; while (q < end) { const dt = Math.min(5 * MIN, end - q), tm = q + dt / 2; TT += -kk * fac(tm) * (TT - amb(tm)) * dt / H; q += dt; } return TT; };
   const simAt = t => { if (!simPath) return null; for (let i = 1; i < simPath.length; i++) if (simPath[i][0] >= t) { const a = simPath[i - 1], b = simPath[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return simPath[simPath.length - 1][1]; };
   const nearest = t => {
     if (!vis.length) return null; let lo = 0, hi = vis.length - 1;
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (vis[m].t <= t) lo = m; else hi = m; }
     return Math.abs(vis[lo].t - t) <= Math.abs(vis[hi].t - t) ? vis[lo] : vis[hi];
   };
-  const hz = o.horizonH > 0 ? o.horizonH : 1, hzLabel = o.horizonLabel || '1 h';
+  const hz = o.horizonH > 0 ? o.horizonH : 1, hzLabel = o.horizonLabel || 'za 1 h';
+  const histAt = t => { if (!histPath) return null; for (let i = 1; i < histPath.length; i++) if (histPath[i][0] >= t) { const a = histPath[i - 1], b = histPath[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return histPath[histPath.length - 1][1]; };
   const clampY = v => Y(Math.max(y0, Math.min(y1, v)));
   const info = t => {
     if (t <= last.t + 5 * MIN) { // změřený bod
@@ -155,7 +161,7 @@ export function buildChart(o) {
         o2.pred = { eta: R && R.eta ? R.eta : null, inH: tv != null ? trendAt(p.t + H) : null, label: 'za 1 h podle trendu' };
       } else {
         o2.trend = { rate: rateCool(p.t, p.T) };
-        o2.pred = { inH: project(p.t, p.T, hz), label: `za ${hzLabel} podle křivky`, tThr: C && C.tThr ? C.tThr : null };
+        o2.pred = { inH: project(p.t, p.T, hz), label: `${hzLabel} podle křivky`, histH: kh ? project(p.t, p.T, hz, kh) : null, tThr: C && C.tThr ? C.tThr : null };
       }
       return o2;
     }
@@ -166,7 +172,7 @@ export function buildChart(o) {
       t, T: Tp, kind: 'predikce', flags: [], sx: X(t), sy: clampY(Tp), amb: amb ? amb(t) : null,
       band: fit && mode === 'heat' ? [Tp - 1.96 * fit.se((t - fit.t0) / H), Tp + 1.96 * fit.se((t - fit.t0) / H)] : null,
       trend: { rate: mode === 'cool' ? rateCool(t, Tp) : heatRate },
-      pred: mode === 'cool' ? { inH: project(t, Tp, hz), label: `za ${hzLabel} podle křivky`, tThr: C && C.tThr ? C.tThr : null } : { eta: R && R.eta ? R.eta : null },
+      pred: mode === 'cool' ? { inH: project(t, Tp, hz), label: `${hzLabel} podle křivky`, histH: kh ? project(t, Tp, hz, kh) : null, histAt: histAt(t), tThr: C && C.tThr ? C.tThr : null } : { eta: R && R.eta ? R.eta : null },
     };
   };
   s += `<g id="hv" visibility="hidden"><line id="hv-line" x1="0" x2="0" y1="${T}" y2="${T + ih}" stroke="${c.fg || c.muted}" stroke-width="1"/><circle id="hv-dot" cx="0" cy="0" r="6" fill="none" stroke="${c.fg || c.muted}" stroke-width="2"/></g>`;

@@ -19,6 +19,7 @@ export const CONFIG = {
   probGreen: 0.8, probOrange: 0.5,
   coolWarnMin: 30,        // min do hranice → oranžová
   coolStepMin: 5,         // min – krok simulace
+  coolMinPairs: 6,        // párů aktuálního chladnutí, od kterých má k čistě z aktuálních dat (méně = míchá se s historií)
   defaultTa: 10,          // °C, když nejsou žádná data o okolí (předpoklad!)
   defaultFiltFactor: 1.5,
   stokeInterval: 30,
@@ -55,6 +56,39 @@ export function resolveHM(hm, now) {
   let t = zonedToEpoch(p.y, p.mo, p.d, h, mi);
   if (t > now + 60 * MIN) { const [y, mo, d] = addDays(p.y, p.mo, p.d, -1); t = zonedToEpoch(y, mo, d, h, mi); }
   return t;
+}
+
+/** „Kdy“ zadané textem: relativně („+12 h“, „+1 d 4 h“, „3h“, „90 min“) nebo absolutně („zítra 17:00“, „dnes 23:30“, „17:00“,
+ *  „30.10. 07:30“, „30.10.2026 7:30“). → {t, kind:'rel'|'abs', hours?} nebo null. Čas bez dne = nejbližší budoucí výskyt (Praha). */
+export function parseWhen(text, now) {
+  const s = String(text || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+  const unit = u => /^d/.test(u) ? 24 : /^(h)/.test(u) ? 1 : 1 / 60;
+  const relParts = [...s.matchAll(/(\d+(?:[.,]\d+)?)\s*(d\w*|h\w*|min\w*|m)\b/g)];
+  const stripped = s.replace(/^\+\s*/, '');
+  const isRel = (s.startsWith('+') || /^(?:\d+(?:[.,]\d+)?\s*(?:d\w*|h\w*|min\w*|m)\s*)+$/.test(s)) && !/[:]/.test(s);
+  if (isRel) {
+    let hours = 0;
+    if (relParts.length) hours = relParts.reduce((a, m) => a + parseFloat(m[1].replace(',', '.')) * unit(m[2]), 0);
+    else { const n = stripped.match(/^(\d+(?:[.,]\d+)?)$/); if (!n) return null; hours = parseFloat(n[1].replace(',', '.')); }
+    return hours > 0 && isFinite(hours) ? { t: now + hours * H, kind: 'rel', hours } : null;
+  }
+  const p = pragueParts(now);
+  const at = (dayOff, h, mi, y = p.y, mo = p.mo, d = p.d) => { if (h > 23 || mi > 59) return null; const [yy, mm, dd] = addDays(y, mo, d, dayOff); return zonedToEpoch(yy, mm, dd, h, mi); };
+  let m = s.match(/^(\d{1,2})\.\s*(\d{1,2})\.?(?:\s*(\d{4}))?\s*(?:v|ve)?\s*(\d{1,2})[:.](\d{2})$/);
+  if (m) { // datum + čas
+    const y = m[3] ? +m[3] : p.y; let t = at(0, +m[4], +m[5], y, +m[2], +m[1]);
+    if (t != null && !m[3] && t < now - 30 * 86400000) t = at(0, +m[4], +m[5], y + 1, +m[2], +m[1]);
+    return t == null ? null : { t, kind: 'abs' };
+  }
+  m = s.match(/^(dnes|zitra|pozitri)?\s*(?:v|ve)?\s*(\d{1,2})(?:[:.](\d{2}))?(?:\s*h(?:od\w*)?)?$/);
+  if (m && (m[3] != null || m[1])) { // „17:00“, „zítra 17“, „dnes v 23:30“
+    const off = { dnes: 0, zitra: 1, pozitri: 2 }[m[1]], h = +m[2], mi = m[3] != null ? +m[3] : 0;
+    let t = at(off ?? 0, h, mi); if (t == null) return null;
+    if (off == null && t <= now) t = at(1, h, mi);
+    return { t, kind: 'abs' };
+  }
+  return null;
 }
 
 /* ===== Parser CSV ===== */
@@ -298,25 +332,27 @@ const inBath = (ints, t, endIfActive = Infinity) => ints.some(i => t >= i.a && (
 
 /* ===== Chladnutí ===== */
 /** Newton s proměnným okolím: dT/dt = −k·f(t)·(T − Ta(t)); k z párů sousedních bodů (regrese přes počátek). */
-export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFactor, filt = [], horizonH = 1, autoF = false }) {
+export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFactor, filt = [], horizonH = 1, autoF = false, kHist = null, bathPause = true }) {
   const Rc = { cool: true, thr, ok: false, amb, horizonH, F, Fmanual: F, Fsrc: 'ručně' };
   const nearF = (a, b) => nearFilt(filt, a, b), inF = t => inFilt(filt, t);
   let C = pts.filter(p => p.t >= coolStart); const anchor = pts.filter(p => p.t <= coolStart).pop();
   if (anchor && (!C.length || C[0].t !== anchor.t)) C = [anchor, ...C];
   Rc.C = C; Rc.last = C[C.length - 1] || pts[pts.length - 1]; if (Rc.last) Rc.Ta = amb(Rc.last.t);
-  if (C.length < 2) { Rc.msg = 'Zapiš teplotu – sledování poklesu potřebuje alespoň 2 body od konce natápění.'; return Rc; }
+  if (C.length < 2 && !(kHist > 0.0005 && C.length === 1)) { Rc.msg = 'Zapiš teplotu – sledování poklesu potřebuje alespoň 2 body od konce natápění.'; return Rc; }
   const last = C[C.length - 1]; Rc.ok = true;
   Rc.peak = C.reduce((m, p) => p.T >= m.T ? p : m, C[0]);
-  const rec = C.filter(p => p.t >= last.t - 30 * MIN), r0 = rec.length >= 2 ? rec[0] : C[C.length - 2];
-  Rc.rateShort = (last.T - r0.T) / ((last.t - r0.t) / H); Rc.rateShortFrom = r0.t;
+  const rec = C.filter(p => p.t >= last.t - 30 * MIN), r0 = rec.length >= 2 ? rec[0] : (C[C.length - 2] || last);
+  Rc.rateShort = r0.t < last.t ? (last.T - r0.T) / ((last.t - r0.t) / H) : 0; Rc.rateShortFrom = r0.t;
   if (last.T <= thr) Rc.below = (C.find(p => p.t >= Rc.peak.t && p.T <= thr) || last).t;
   const mixes = C.filter(p => p.mix || p.bath || p.bathEnd); Rc.mixAt = mixes.length ? mixes[mixes.length - 1].t : null;
   Rc.lastIsMix = !!(last.mix || last.bath || last.bathEnd); Rc.lastIsBath = !!last.bath; Rc.lastIsBathEnd = !!last.bathEnd;
   Rc.baths = bathIntervals(pts); const bnow = bathingNow(Rc.baths);
-  if (bnow) { Rc.bathing = true; Rc.bathSince = bnow.a; Rc.msg = 'Koupání probíhá (víko sejmuto) – predikce chladnutí se obnoví po zápisu „koupání ukončeno“.'; return Rc; }
+  if (bnow && bathPause) { Rc.bathing = true; Rc.bathSince = bnow.a; Rc.msg = 'Koupání probíhá (víko sejmuto) – predikce chladnutí se obnoví po zápisu „koupání ukončeno“.'; return Rc; }
   const base = Rc.mixAt && Rc.mixAt > Rc.peak.t ? Rc.mixAt : Rc.peak.t; Rc.base = base;
   const D = C.filter(p => p.t >= base && p.T - amb(p.t) > 0.3);
-  if (D.length < 2 || last.t === base) {
+  const histOK = kHist != null && kHist > 0.0005;
+  const fewD = D.length < 2 || last.t === base;
+  if (fewD && !(histOK && Rc.mixAt)) { // málo bodů a není z čeho předběžně odhadovat
     if (last.t === Rc.peak.t || !Rc.mixAt) { Rc.rising = true; Rc.msg = 'Teplota zatím neklesá.'; }
     else Rc.msg = 'Po zamíchání/koupání – křivka se vyhodnotí z dalších zápisů.';
     return Rc;
@@ -331,12 +367,19 @@ export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFa
     const k = sxx > 0 ? -sxy / sxx : 0; let sse = 0; pr.forEach(([X, Y]) => sse += (Y + k * X) ** 2); const m = pr.length;
     return { k, m, sd: m > 1 ? Math.sqrt(sse / (m - 1)) : 0, se: m > 1 && sxx > 0 ? Math.sqrt(sse / (m - 1) / sxx) : null };
   };
-  let f = kfit(D, 'norm'); if (f.m < 1) f = kfit(D); f.n = D.length; Rc.fit = f; Rc.k = f.k;
-  const ff = kfit(D, 'filt'); Rc.Fest = ff.m >= 1 && f.k > 0.0005 && ff.k > 0 ? ff.k / f.k : null;
+  let f = null;
+  if (!fewD) { f = kfit(D, 'norm'); if (f.m < 1) f = kfit(D); f.n = D.length; Rc.fit = f; Rc.kCur = f.k; }
+  const ff = f ? kfit(D, 'filt') : null; Rc.Fest = ff && ff.m >= 1 && f.k > 0.0005 && ff.k > 0 ? ff.k / f.k : null;
   const useAuto = autoF && Rc.Fest != null && Rc.Fest >= 1 && Rc.Fest <= 10; // faktor primárně z aktuálních dat, jinak ručně zadaný
   const Fuse = useAuto ? Rc.Fest : F; Rc.F = Fuse; Rc.Fmanual = F; Rc.Fsrc = useAuto ? 'data' : 'ručně';
-  Rc.lastInFilt = nearF(C[C.length - 2].t, last.t);
-  if (Rc.k <= 0.0005) { Rc.rising = true; Rc.msg = 'Teplota neklesá.'; return Rc; }
+  Rc.lastInFilt = C.length > 1 ? nearF(C[C.length - 2].t, last.t) : false;
+  const curOK = !!(f && f.k > 0.0005);
+  if (!curOK && !(histOK && Rc.mixAt)) { Rc.rising = true; Rc.msg = 'Teplota neklesá.'; return Rc; }
+  // k: aktuální chladnutí má přednost; při nedostatku párů se míchá s historickým trendem (váha aktuálního = páry / coolMinPairs)
+  const w = curOK ? Math.min(1, f.m / CONFIG.coolMinPairs) : 0;
+  Rc.k = curOK ? (histOK ? w * f.k + (1 - w) * kHist : f.k) : kHist;
+  Rc.kW = w; Rc.kSrc = !histOK || w >= 1 ? 'aktuální' : w > 0 ? 'mix' : 'historie'; Rc.kHist = histOK ? kHist : null; Rc.kPairs = f ? f.m : 0;
+  const seK = curOK && f.se != null ? w * f.se + (1 - w) * (histOK ? 0.25 * kHist : 0) : (!curOK ? 0.25 * Rc.k : null);
   const step = CONFIG.coolStepMin * MIN;
   const sim = (k, t0, T0, tEnd, stopBelow) => {
     let t = t0, T = T0; const path = [[t, T]];
@@ -355,19 +398,36 @@ export function analyzeCool(pts, { coolStart, amb, thr, F = CONFIG.defaultFiltFa
     if (!r.hit) Rc.in48h = r.T; // do 48 h hranice nehrozí
     if (r.hit) {
       Rc.tThr = r.t;
-      if (f.se) {
-        const a = sim(Rc.k + f.se, last.t, last.T, last.t + 48 * H, thr), b = sim(Math.max(Rc.k - f.se, 1e-4), last.t, last.T, last.t + 96 * H, thr);
+      if (seK) {
+        const a = sim(Rc.k + seK, last.t, last.T, last.t + 48 * H, thr), b = sim(Math.max(Rc.k - seK, 1e-4), last.t, last.T, last.t + 96 * H, thr);
         const sK = b.hit && a.hit ? Math.abs(b.t - a.t) / 2 : Infinity, sR = CONFIG.sensorRes / Math.max(Math.abs(Rc.rateNow), 0.05) * H;
         Rc.sigma = Math.max(Math.sqrt(sK * sK + sR * sR), CONFIG.minSigmaMin * MIN); if (!isFinite(Rc.sigma)) Rc.sigma = null;
       }
     }
   }
-  if (D.length >= 4 && !Rc.lastInFilt) {
+  if (histOK) { // historický trend pro srovnání (vždy, i když rozhoduje aktuální chladnutí)
+    const hh = sim(kHist, last.t, last.T, last.t + horizonH * H), h1 = sim(kHist, last.t, last.T, last.t + H);
+    const rt = !Rc.below ? sim(kHist, last.t, last.T, last.t + 48 * H, thr) : null;
+    Rc.hist = { k: kHist, inH: hh.T, in1h: h1.T, tThr: rt && rt.hit ? rt.t : null, sim: tEnd => sim(kHist, last.t, last.T, tEnd).path, rateNow: -kHist * (last.T - amb(last.t)) };
+  }
+  if (!fewD && D.length >= 4 && !Rc.lastInFilt) {
     let fp = kfit(D.slice(0, -1), 'norm'); if (fp.m < 1) fp = kfit(D.slice(0, -1));
     const pv = D[D.length - 2]; const pr = sim(fp.k, pv.t, pv.T, last.t).T; const se = Math.max(fp.sd, CONFIG.sensorRes);
     Rc.check = { pred: pr, se, dev: last.T - pr, z: (last.T - pr) / se };
   }
   return Rc;
+}
+
+/** Historický trend chladnutí: vážený průměr k (váha = počet párů) z dřívějších úseků.
+ *  sessions: [{pts, coolStart}] – archiv + část aktuálních dat před začátkem natápění. Vyžaduje ≥ 3 páry v úseku. */
+export function historicalCool(sessions, { amb, filt = [], F = CONFIG.defaultFiltFactor, autoF = true } = {}) {
+  const items = []; let num = 0, den = 0;
+  for (const ss of sessions || []) {
+    if (!ss.pts || ss.pts.length < 6 || ss.coolStart == null) continue;
+    const C = analyzeCool(ss.pts, { coolStart: ss.coolStart, amb, thr: -1000, F, filt, autoF, bathPause: false });
+    if (C.fit && C.fit.m >= 3 && C.fit.k > 0.0005) { items.push({ k: C.fit.k, m: C.fit.m, from: C.base, to: C.last.t, label: ss.label || '' }); num += C.fit.k * C.fit.m; den += C.fit.m; }
+  }
+  return den ? { k: num / den, pairs: den, items } : null;
 }
 
 /* ===== Varování (natápění) ===== */
