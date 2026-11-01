@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "gen": 2,
-  "updated": 1793538886014,
+  "updated": 1793538901117,
   "updatedBy": "iPhone",
   "session": {
     "mode": "cool",
@@ -144,6 +144,19 @@
       "note": "",
       "mod": 1793538884502,
       "amb": 9.8,
+      "ambSrc": "pred"
+    },
+    {
+      "id": "m_k4lqhw0yr3x4",
+      "t": 1793538840000,
+      "T": 37.2,
+      "mix": false,
+      "bath": true,
+      "bathEnd": false,
+      "stoke": false,
+      "note": "",
+      "mod": 1793538899608,
+      "amb": 9.7,
       "ambSrc": "pred"
     }
   ],
