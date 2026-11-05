@@ -26,7 +26,7 @@ const rnd5 = t => Math.ceil(t / (5 * MIN)) * 5 * MIN;
 const UI_KEY = 'hottube.ui', DEV_KEY = 'hottube.device';
 const kvGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const kvSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* UI nastavení je nepovinné */ } };
-const ui = { open: {}, winMin: 60, sound: false, timer: false, shortcut: 'Kad minutka', range: 'auto', ahead: 0, coolHorizon: 1, predAt: null, statsScope: 'all', show: {}, ...(kvGet(UI_KEY) || {}) };
+const ui = { open: {}, winMin: 60, sound: false, timer: false, shortcut: 'HotTube_timer', range: 'auto', ahead: 0, coolHorizon: 1, predAt: null, statsScope: 'all', show: {}, ...(kvGet(UI_KEY) || {}) };
 const saveUi = () => kvSet(UI_KEY, ui);
 
 function deviceName() {
