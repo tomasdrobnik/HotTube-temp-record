@@ -82,6 +82,12 @@ function histCool(d) {
 }
 
 /* ===== zvuk ===== */
+function unlockAudio() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state !== 'running') audio.resume();
+  } catch { /* bez zvuku */ }
+}
 function beep() {
   try {
     if (!audio || !ui.sound) return;
@@ -535,7 +541,9 @@ function bind() {
   $('stokeInt').addEventListener('change', () => { const v = parseInt($('stokeInt').value, 10); if (v > 0) store.mutate(d => { d.stoke.interval = v; if (d.stoke.log.length) d.stoke.next = d.stoke.log.at(-1) + v * MIN; }, 'interval přikládání ' + v + ' min'); });
   $('stokeNextIn').addEventListener('change', () => { const hm = $('stokeNextIn').value; if (!hm) return; const [h, m] = hm.split(':').map(Number), p = A.pragueParts(Date.now()); let t = A.zonedToEpoch(p.y, p.mo, p.d, h, m); if (t < Date.now() - 12 * H) t += 24 * H; store.mutate(d => { d.stoke.next = t; }, 'další přiložení ' + hm); });
   $('sound').checked = ui.sound;
-  $('sound').addEventListener('change', () => { ui.sound = $('sound').checked; saveUi(); if (ui.sound) { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); beep(); } catch { /* bez zvuku */ } } });
+  $('sound').addEventListener('change', () => { ui.sound = $('sound').checked; saveUi(); if (ui.sound) { unlockAudio(); beep(); } });
+  // iOS: AudioContext lze vytvořit/obnovit jen z uživatelského gesta; po reloadu stránky je ui.sound zapnuto, audio ale null
+  ['pointerdown', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (ui.sound) unlockAudio(); }, { passive: true }));
   // filtrace
   $('filtForm').addEventListener('submit', e => { e.preventDefault(); const [h, m] = $('fiTime').value.split(':').map(Number), dur = parseInt($('fiDur').value, 10); if (!(dur > 0) || isNaN(h)) return; store.mutate(d => { d.filt.windows.push({ h, m, d: dur }); }, `filtrace: přidáno okno ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`); });
   $('fiFactor').addEventListener('change', () => { const v = pn($('fiFactor').value); if (v >= 1 && v <= 10) store.mutate(d => { d.filt.factor = v; d.filt.auto = false; }, 'faktor filtrace ' + nf(v, 2) + ' (ručně)'); });
