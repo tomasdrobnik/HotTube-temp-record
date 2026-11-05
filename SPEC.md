@@ -145,6 +145,8 @@ Sbalená sekce ukazuje v záhlaví krátký souhrn (např. „přiložit 18:50 (
 
 **Přikládání:** interval (výchozí 30 min), další termín (editovatelný), odpočet, tlačítko **Přiloženo teď**, zaškrtávátko „přiloženo“ u zápisu, plán přiložení do ETA, zvukové upozornění (Web Audio, zapíná se klikem). Při probíhajícím zastavení ohřevu výzva „přilož hned“.
 
+**Minutka přes iOS Zkratky** (volitelná, nastavení jen v zařízení – `localStorage`, výchozí vypnuto): po **Přiloženo teď**, po zápisu se zaškrtnutým „přiloženo“ a po **Novém ohřevu** s „přiloženo“ stránka otevře `shortcuts://run-shortcut?name=<název>&input=text&text=<minuty do dalšího přiložení>`. Výchozí název zkratky `HotTube_timer` (editovatelný). Zkratka = „Přijmout vstup“ + „Spustit minutku: Vstup zkratky, minut“. Nespouští se, pokud je termín už uplynulý (zpětný zápis). Důvod: zvuk Web Audio v zamčeném/přepnutém Safari na iOS nehraje (můj poznatek, neověřeno dokumentací); minutka z Hodin ano. Známá omezení: každé klepnutí vytvoří novou minutku (stará se neruší); po spuštění zůstane uživatel ve Zkratkách; zvonění při zamčeném displeji a ztlumeném přepínači není ověřeno. Zvuk na stránce: `AudioContext` se po reloadu obnoví při prvním gestu.
+
 **Hodnocení zápisu** (hned pod formulářem): štítek Na trendu / Nad trendem / Pod trendem / Chladne / Filtrace / Po zamíchání / Po koupání / Málo dat + odchylka.
 
 **Varování (pruh nahoře):**
@@ -284,7 +286,7 @@ Z `fixtures/` (25.–26. 10. 2026) a stavu v `data/state.json`:
 - [ ] Hranice poklesu: výchozí 37 °C (v datech je teď nastaveno 4 °C – ověřit, zda záměr).
 - [ ] Chybějící data čidla 25. 10. 18:10–24:00 – doplnit exportem, pokud existují.
 - [ ] Filtrace jako skok místo faktoru (v2)?
-- [ ] Notifikace mimo otevřenou stránku (Web Push / kalendář) – mimo rozsah v1.
+- [ ] Notifikace mimo otevřenou stránku (Web Push / kalendář) – mimo rozsah v1; částečně řešeno minutkou přes iOS Zkratky (5.2).
 
 ## 11. Mimo rozsah v1
 
