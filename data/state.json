@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "gen": 3,
-  "updated": 1793888111721,
+  "gen": 4,
+  "updated": 1793890909146,
   "updatedBy": "iPhone",
   "session": {
     "mode": "heat",
@@ -9,26 +9,26 @@
     "coolStart": null,
     "coolThr": 10,
     "coolTa": null,
-    "heatStart": 1793887800000
+    "heatStart": 1793890860000
   },
   "csv": [],
   "manual": [
     {
-      "id": "m_6f63ujdxnwjq",
-      "t": 1793887800000,
+      "id": "m_z3pkoxd0bv1x",
+      "t": 1793890860000,
       "T": 16.1,
       "mix": false,
       "bath": false,
       "stoke": true,
       "note": "start ohřevu",
-      "mod": 1793888110194
+      "mod": 1793890907634
     }
   ],
   "stoke": {
     "interval": 30,
-    "next": 1793889600000,
+    "next": 1793892660000,
     "log": [
-      1793887800000
+      1793890860000
     ]
   },
   "filt": {
@@ -613,6 +613,51 @@
             1793462040000,
             1793464980000,
             1793468400000
+          ]
+        }
+      }
+    },
+    {
+      "closedAt": 1793890907634,
+      "summary": {
+        "start": 1793887800000,
+        "startT": 16.1,
+        "max": 16.1,
+        "maxAt": 1793887800000,
+        "target": 40,
+        "reachedAt": null,
+        "endedAt": null,
+        "k": null,
+        "count": 1,
+        "closedAt": 1793890907634
+      },
+      "data": {
+        "session": {
+          "mode": "heat",
+          "target": 40,
+          "coolStart": null,
+          "coolThr": 10,
+          "coolTa": null,
+          "heatStart": 1793887800000
+        },
+        "csv": [],
+        "manual": [
+          {
+            "id": "m_6f63ujdxnwjq",
+            "t": 1793887800000,
+            "T": 16.1,
+            "mix": false,
+            "bath": false,
+            "stoke": true,
+            "note": "start ohřevu",
+            "mod": 1793888110194
+          }
+        ],
+        "stoke": {
+          "interval": 30,
+          "next": 1793889600000,
+          "log": [
+            1793887800000
           ]
         }
       }
