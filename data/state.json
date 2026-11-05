@@ -1,15 +1,15 @@
 {
   "schema": 1,
   "gen": 4,
-  "updated": 1793894081376,
-  "updatedBy": "iPhone",
+  "updated": 1793895737767,
+  "updatedBy": "Mac",
   "session": {
     "mode": "heat",
     "target": 40,
     "coolStart": null,
     "coolThr": 10,
     "coolTa": null,
-    "heatStart": 1793890860000
+    "heatStart": null
   },
   "csv": [],
   "manual": [
