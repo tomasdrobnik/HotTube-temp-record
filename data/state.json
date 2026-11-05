@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "gen": 4,
-  "updated": 1793895786438,
-  "updatedBy": "Mac",
+  "updated": 1793896083703,
+  "updatedBy": "iPhone",
   "session": {
     "mode": "heat",
     "target": 40,
@@ -35,14 +35,28 @@
       "mod": 1793894079862,
       "amb": 6.9,
       "ambSrc": "pred"
+    },
+    {
+      "id": "m_wqr2pamzerrf",
+      "t": 1793896020000,
+      "T": 23.9,
+      "mix": false,
+      "bath": false,
+      "bathEnd": false,
+      "stoke": true,
+      "note": "",
+      "mod": 1793896082185,
+      "amb": 6.2,
+      "ambSrc": "pred"
     }
   ],
   "stoke": {
     "interval": 30,
-    "next": 1793895900000,
+    "next": 1793897820000,
     "log": [
       1793890860000,
-      1793894100000
+      1793894100000,
+      1793896020000
     ]
   },
   "filt": {
