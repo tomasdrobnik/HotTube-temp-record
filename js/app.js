@@ -585,6 +585,7 @@ function bind() {
     }, `nový ohřev ${fmt(t)}${hadData ? ' (předchozí data archivována)' : ''}`);
     deadlineTouched = false; $('newPanel').hidden = true;
     if (!isFinite(T0)) { $('secImport').open = true; $('secImport').scrollIntoView({ block: 'start' }); }
+    if (stk) startTimer();
   });
   // import
   const readFile = f => { const r = new FileReader(); r.onload = () => previewImport(f.name, String(r.result)); r.readAsText(f); };
