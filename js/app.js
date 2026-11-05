@@ -26,7 +26,7 @@ const rnd5 = t => Math.ceil(t / (5 * MIN)) * 5 * MIN;
 const UI_KEY = 'hottube.ui', DEV_KEY = 'hottube.device';
 const kvGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const kvSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* UI nastavení je nepovinné */ } };
-const ui = { open: {}, winMin: 60, sound: false, range: 'auto', ahead: 0, coolHorizon: 1, predAt: null, statsScope: 'all', show: {}, ...(kvGet(UI_KEY) || {}) };
+const ui = { open: {}, winMin: 60, sound: false, timer: false, shortcut: 'Kad minutka', range: 'auto', ahead: 0, coolHorizon: 1, predAt: null, statsScope: 'all', show: {}, ...(kvGet(UI_KEY) || {}) };
 const saveUi = () => kvSet(UI_KEY, ui);
 
 function deviceName() {
@@ -82,6 +82,13 @@ function histCool(d) {
 }
 
 /* ===== zvuk ===== */
+/* iOS minutka přes Zkratky: zkratka (Start Timer, doba = Vstup zkratky v minutách) zvoní nativně i při zamčeném displeji */
+function startTimer() {
+  if (!ui.timer || !ui.shortcut) return;
+  const next = store.state.stoke && store.state.stoke.next, min = next ? Math.round((next - Date.now()) / MIN) : 0;
+  if (min < 1) return;   // termín už uplynul (zpětný zápis) – nic nespouštět
+  location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(ui.shortcut)}&input=text&text=${min}`;
+}
 function unlockAudio() {
   try {
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
@@ -518,6 +525,7 @@ function bind() {
     if (isFinite(aIn)) { rec.amb = aIn; rec.ambSrc = 'man'; }
     else { const fa = A.makeAmbient(weather.series, []); if (!fa.fallback) { rec.amb = Math.round(fa(t) * 10) / 10; rec.ambSrc = 'pred'; } }
     store.mutate(d => { d.manual.push(rec); if (rec.stoke) addStoke(d, t); }, `zápis ${fmt(t)} ${nf(rec.T)} °C`);
+    if (rec.stoke) startTimer();
     $('manT').value = ''; $('manAmb').value = ''; $('manMix').checked = $('manBath').checked = $('manBathEnd').checked = $('manStoke').checked = false;
     manTimeTouched = false; $('manTime').value = todayHM(); $('manT').focus();
   });
@@ -537,9 +545,12 @@ function bind() {
   $('coTa').addEventListener('change', () => { const v = pn($('coTa').value); store.mutate(d => { d.session.coolTa = isFinite(v) ? v : null; }, 'okolí ' + (isFinite(v) ? nt(v) + ' °C' : 'auto')); });
   $('coStart').addEventListener('change', () => { const t = A.resolveHM($('coStart').value, Date.now()); if (t != null) store.mutate(d => { d.session.coolStart = t; }, 'konec natápění ' + fmt(t)); });
   // přikládání
-  $('stokeNow').addEventListener('click', () => { const t = Date.now(); store.mutate(d => addStoke(d, t), 'přiloženo ' + fmt(t)); });
+  $('stokeNow').addEventListener('click', () => { const t = Date.now(); store.mutate(d => addStoke(d, t), 'přiloženo ' + fmt(t)); startTimer(); });
   $('stokeInt').addEventListener('change', () => { const v = parseInt($('stokeInt').value, 10); if (v > 0) store.mutate(d => { d.stoke.interval = v; if (d.stoke.log.length) d.stoke.next = d.stoke.log.at(-1) + v * MIN; }, 'interval přikládání ' + v + ' min'); });
   $('stokeNextIn').addEventListener('change', () => { const hm = $('stokeNextIn').value; if (!hm) return; const [h, m] = hm.split(':').map(Number), p = A.pragueParts(Date.now()); let t = A.zonedToEpoch(p.y, p.mo, p.d, h, m); if (t < Date.now() - 12 * H) t += 24 * H; store.mutate(d => { d.stoke.next = t; }, 'další přiložení ' + hm); });
+  $('timer').checked = ui.timer; $('shortcutName').value = ui.shortcut;
+  $('timer').addEventListener('change', () => { ui.timer = $('timer').checked; saveUi(); });
+  $('shortcutName').addEventListener('change', () => { ui.shortcut = $('shortcutName').value.trim(); saveUi(); });
   $('sound').checked = ui.sound;
   $('sound').addEventListener('change', () => { ui.sound = $('sound').checked; saveUi(); if (ui.sound) { unlockAudio(); beep(); } });
   // iOS: AudioContext lze vytvořit/obnovit jen z uživatelského gesta; po reloadu stránky je ui.sound zapnuto, audio ale null
@@ -664,7 +675,7 @@ async function main() {
   }, 60000);
   setInterval(() => { if (document.visibilityState === 'visible') loadWeather(false); }, Math.min(REFRESH_MS, 10 * MIN));
   setInterval(() => { if (D) { render(); } }, 15000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { store.refresh(); render(); } });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (store.pending > 0 && store.token) store.flush(); store.refresh(); render(); } });
   window.addEventListener('online', () => { store.flush().then(() => store.refresh()); });
 }
 main();
