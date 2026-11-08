@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "gen": 5,
-  "updated": 1794131448806,
+  "updated": 1794132659667,
   "updatedBy": "iPhone",
   "session": {
     "mode": "heat",
@@ -48,14 +48,28 @@
       "mod": 1794131447293,
       "amb": -2.8,
       "ambSrc": "pred"
+    },
+    {
+      "id": "m_31ew9xvz9ey2",
+      "t": 1794132600000,
+      "T": 28.3,
+      "mix": false,
+      "bath": false,
+      "bathEnd": false,
+      "stoke": true,
+      "note": "",
+      "mod": 1794132658153,
+      "amb": -2.2,
+      "ambSrc": "pred"
     }
   ],
   "stoke": {
     "interval": 30,
-    "next": 1794131820000,
+    "next": 1794134400000,
     "log": [
       1794127620000,
-      1794130020000
+      1794130020000,
+      1794132600000
     ]
   },
   "filt": {
