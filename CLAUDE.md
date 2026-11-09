@@ -58,3 +58,11 @@ data/state.json  fixtures/*.csv  test/*.test.js  prototype/  SPEC.md
 ## Commity
 - Kód: `feat: …`, `fix: …`, `test: …` (anglicky nebo česky, konzistentně v rámci PR).
 - Data zapisuje stránka sama (`zápis HH:MM …`) – do `data/` necommituj ručně, pokud to uživatel nežádá.
+
+## Git: potvrdit, pak commit A push
+
+Když je úkol hotový a nezbývají otevřené otázky, stručně shrň a požádej o potvrzení přes `AskUserQuestion` („Commit a push?“). Po potvrzení udělej commit i push v jednom kroku. Nikdy nenechávej commit bez pushe ani hotovou práci necommitnutou. Před potvrzením necommituj ani nepushuj.
+
+## Neaktivní session: nabídni /ctx-handoff
+
+Aby se neztratila cache a neplýtvalo tokeny: když jsem delší dobu neaktivní (tah skončí s pozastavenou prací, nebo moje další zpráva přijde po dlouhé pauze, zhruba 5+ minut), zeptej se přes `AskUserQuestion`, zda mám spustit `/ctx-handoff`. Bez mé odpovědi ho nespouštěj.
