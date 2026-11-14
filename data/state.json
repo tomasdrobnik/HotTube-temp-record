@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "gen": 6,
-  "updated": 1794668884463,
+  "updated": 1794670162836,
   "updatedBy": "iPhone",
   "session": {
     "mode": "heat",
@@ -22,13 +22,27 @@
       "stoke": true,
       "note": "start ohřevu",
       "mod": 1794668882939
+    },
+    {
+      "id": "m_9smmnuj19z1r",
+      "t": 1794670140000,
+      "T": 22.3,
+      "mix": false,
+      "bath": false,
+      "bathEnd": false,
+      "stoke": true,
+      "note": "",
+      "mod": 1794670161327,
+      "amb": 5.2,
+      "ambSrc": "pred"
     }
   ],
   "stoke": {
     "interval": 30,
-    "next": 1794670200000,
+    "next": 1794671940000,
     "log": [
-      1794668400000
+      1794668400000,
+      1794670140000
     ]
   },
   "filt": {
