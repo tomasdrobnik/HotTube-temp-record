@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "gen": 6,
-  "updated": 1794744415235,
+  "updated": 1794744464513,
   "updatedBy": "iPhone",
   "session": {
-    "mode": "heat",
+    "mode": "cool",
     "target": 40,
-    "coolStart": null,
+    "coolStart": 1794682800000,
     "coolThr": 10,
     "coolTa": null,
     "heatStart": 1794668400000
