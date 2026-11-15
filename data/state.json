@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "gen": 6,
-  "updated": 1794756958983,
+  "updated": 1794756960780,
   "updatedBy": "iPhone",
   "session": {
     "mode": "cool",
@@ -168,11 +168,6 @@
         "h": 10,
         "m": 0,
         "d": 120
-      },
-      {
-        "h": 8,
-        "m": 0,
-        "d": 15
       }
     ]
   },
